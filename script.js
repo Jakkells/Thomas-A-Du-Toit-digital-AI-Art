@@ -49,17 +49,52 @@ window.addEventListener('click', (e) => {
     }
 });
 
-// Form submissions (placeholder functionality)
-document.getElementById('loginForm').addEventListener('submit', (e) => {
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+
+const supabaseUrl = window.SUPABASE_URL;
+const supabaseKey = window.SUPABASE_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Login form
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    alert('Login functionality will be connected to Supabase soon!');
-    loginModal.style.display = 'none';
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+        alert('Login failed: ' + error.message);
+    } else {
+        alert('Login successful!');
+        loginModal.style.display = 'none';
+    }
 });
 
-document.getElementById('signupForm').addEventListener('submit', (e) => {
+// Signup form
+document.getElementById('signupForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    alert('Sign up functionality will be connected to Supabase soon!');
-    signupModal.style.display = 'none';
+    const name = document.getElementById('signupName').value;
+    const email = document.getElementById('signupEmail').value;
+    const password = document.getElementById('signupPassword').value;
+
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if (error) {
+        alert('Sign up failed: ' + error.message);
+        return;
+    }
+
+    // Insert profile after successful sign up
+    if (data.user) {
+        const { error: profileError } = await supabase
+            .from('profiles')
+            .insert([{ id: data.user.id, name }]);
+        if (profileError) {
+            alert('Profile creation failed: ' + profileError.message);
+        } else {
+            alert('Sign up successful!');
+            signupModal.style.display = 'none';
+        }
+    }
 });
 
 // Search functionality
