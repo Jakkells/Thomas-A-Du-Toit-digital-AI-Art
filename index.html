@@ -1,151 +1,214 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Thomas AI Art</title>
-    <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@19.5.6/build/css/intlTelInput.min.css"/>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Thomas AI Art</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@19.5.6/build/css/intlTelInput.min.css"/>
 </head>
 <body>
-    <div id="globalMsg" style="display:none;color:red;text-align:center;margin:16px 0;font-size:1em;"></div>
-    <!-- Header -->
-    <header class="header">
-        <div class="header-container">
-            <a href="#" class="logo">Thomas AI Art</a>
-            
-            <nav>
-                <ul class="nav-menu">
-                    <li><a href="#shop">Shop</a></li>
-                    <li><a href="#collections">Collections</a></li>
-                    <li><a href="#about">About</a></li>
-                    <li><a href="#contact">Contact</a></li>
-                </ul>
-            </nav>
+  <div id="globalMsg" style="display:none;color:red;text-align:center;margin:16px 0;font-size:1em;"></div>
 
-            <div class="header-actions">
-                <div class="search-box">
-                    <input type="text" class="search-input" placeholder="Search...">
-                    <button class="search-btn">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="11" cy="11" r="8"></circle>
-                            <path d="m21 21-4.35-4.35"></path>
-                        </svg>
-                    </button>
-                </div>
+  <header class="header">
+    <div class="header-container" style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
+      <a href="#" class="logo">Thomas AI Art</a>
 
-                <div class="auth-buttons">
-                    <button class="btn btn-outline" id="loginBtn">Login</button>
-                    <button class="btn btn-solid" id="signupBtn">Sign Up</button>
-                </div>
+      <nav>
+        <ul class="nav-menu" style="list-style:none;display:flex;gap:16px;margin:0;padding:0;">
+          <li><a href="#shop">Shop</a></li>
+          <li><a href="#about">About</a></li>
+          <li><a href="#contact">Contact</a></li>
+        </ul>
+      </nav>
 
-                <div class="cart-icon">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <path d="M3 3h2l.4 2M7 13h10l4-8H5.4m1.6 8L6 5H3m4 8v6a2 2 0 002 2h8a2 2 0 002-2v-6"></path>
-                    </svg>
-                </div>
+      <!-- Keep cart separate from auth so auth.js doesn't overwrite it -->
+      <div class="header-actions">
+        <button id="cartBtn" class="icon-btn cart-btn" title="Cart" aria-label="Cart">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zm10 0c-1.1
+             0-1.99.9-1.99 2S15.9 22 17 22s2-.9 2-2-.9-2-2-2zM7.16 14l.03.01L7.9 16h8.45c.75 0
+             1.41-.41 1.75-1.03l3.58-6.49A1 1 0 0 0 21.8 7H6.21L5.27 5H2v2h2l3.6 7z"/>
+          </svg>
+          <span id="cartCount" class="badge">0</span>
+        </button>
 
-                <div class="mobile-menu-toggle">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                </div>
-            </div>
+        <div id="authControls" class="auth-buttons">
+          <button class="btn btn-outline" id="loginBtn">Login</button>
+          <button class="btn btn-solid" id="signupBtn">Sign Up</button>
         </div>
-    </header>
+      </div>
+    </div>
+  </header>
 
-    <!-- Main Content -->
-    <main class="main-content">
-        <section class="hero-section">
-            <h1>Digital AI Art Collection</h1>
-            <p>Discover unique AI-generated artwork that pushes the boundaries of creativity and technology. Each piece is carefully curated and available as high-quality prints.</p>
-            <button class="btn btn-solid hero-btn">Explore Collection</button>
-        </section>
-    </main>
+  <main class="main-content">
+    <section id="shop">
+      <div id="productsGrid" class="products-grid"></div>
+    </section>
 
-    <!-- Login Modal -->
-    <div id="loginModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Login</h2>
-                <button class="close-modal" id="closeLogin">&times;</button>
+    <section id="about">
+      <div class="about-content">
+        <h2>About</h2>
+        <p>This is a test blurb for the About section.</p>
+      </div>
+    </section>
+
+    <section id="contact">
+      <div class="contact-content">
+        <div class="contact-name">Thomas A Du Toit</div>
+        <a class="contact-phone" href="tel:+27665721234">+27 66 572 1234</a>
+      </div>
+    </section>
+
+    <section id="maintenance" class="maintenance-section">
+      <div id="productsGridMaintenance" class="products-grid"></div>
+    </section>
+
+    <button id="fabAddProduct" class="fab" title="Add Product">+</button>
+
+    <div id="productModal" class="modal">
+      <div class="modal-content">
+        <button id="closeProductModal" class="modal-close" aria-label="Close">×</button>
+        <h2>Add Product</h2>
+        <form id="productForm">
+          <div class="form-group">
+            <label for="prodName">Item name</label>
+            <input type="text" id="prodName" required />
+          </div>
+          <div class="form-group">
+            <label for="prodType">Item type</label>
+            <input type="text" id="prodType" required />
+          </div>
+
+          <!-- Dropzone -->
+          <div class="form-group">
+            <label>Images</label>
+            <div id="imageDropzone" class="dropzone">
+              <div class="dz-instructions">Drag & drop images here or click to select</div>
+              <input id="filePicker" type="file" accept="image/*" multiple hidden />
+              <div id="imagePreview" class="dz-preview"></div>
             </div>
-            <form id="loginForm">
-                <div class="form-group">
-                    <label for="loginEmail">Email</label>
-                    <input type="email" id="loginEmail" required>
-                </div>
-                <div class="form-group">
-                    <label for="loginPassword">Password</label>
-                    <div style="position:relative;">
-                        <input type="password" id="loginPassword" required>
-                        <button type="button" class="show-password-btn" id="showLoginPassword" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;">
-                            Show
-                        </button>
-                    </div>
-                </div>
-                <button type="submit" class="form-submit">Login</button>
-            </form>
-            <div class="form-switch">
-                Don't have an account? <a href="#" id="switchToSignup">Sign up</a>
-            </div>
-        </div>
+            <!-- Hidden field to hold CSV of URLs after upload -->
+            <input type="hidden" id="prodImageUrls" />
+          </div>
+
+          <div class="form-group">
+            <label for="prodStock">Stock</label>
+            <input type="number" id="prodStock" min="0" step="1" value="0" required />
+          </div>
+          <div class="form-group">
+            <label for="prodPrice">Price</label>
+            <input type="number" id="prodPrice" min="0" step="0.01" value="0.00" required />
+          </div>
+          <button type="submit" class="btn btn-solid" style="width:100%;">Save Product</button>
+        </form>
+      </div>
     </div>
 
-    <!-- Signup Modal -->
-    <div id="signupModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Sign Up</h2>
-                <button class="close-modal" id="closeSignup">&times;</button>
-            </div>
-            <form id="signupForm">
-                <div class="form-group">
-                    <label for="signupFirstName">First Name</label>
-                    <input type="text" id="signupFirstName" required>
-                </div>
-                <div class="form-group">
-                    <label for="signupMiddleName">Middle Name</label>
-                    <input type="text" id="signupMiddleName">
-                </div>
-                <div class="form-group">
-                    <label for="signupLastName">Last Name</label>
-                    <input type="text" id="signupLastName" required>
-                </div>
-                <div class="form-group">
-                    <label for="signupPhoneNumber">Phone Number</label>
-                    <input id="signupPhoneNumber" type="tel" required>
-                </div>
-                <div class="form-group">
-                    <label for="signupAddress">Address</label>
-                    <textarea id="signupAddress" rows="2" required></textarea>
-                </div>
-                <div class="form-group">
-                    <label for="signupEmail">Email</label>
-                    <input type="email" id="signupEmail" required>
-                </div>
-                <div class="form-group">
-                    <label for="signupPassword">Password</label>
-                    <div style="position:relative;">
-                        <input type="password" id="signupPassword" required>
-                        <button type="button" class="show-password-btn" id="showSignupPassword" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;">
-                            Show
-                        </button>
-                    </div>
-                </div>
-                <button type="submit" class="form-submit">Create Account</button>
-            </form>
-            <div class="form-switch">
-                Already have an account? <a href="#" id="switchToLogin">Login</a>
-            </div>
+    <!-- Product Detail Section -->
+    <section id="product" class="product-detail-section hidden">
+      <div class="pd-layout">
+        <aside id="pdThumbs" class="pd-thumbs"></aside>
+        <div class="pd-image">
+          <img id="pdMainImage" alt="Product image" />
         </div>
-    </div>
+        <aside class="pd-info">
+          <h1 id="pdName" class="pd-name"></h1>
+          <div id="pdPrice" class="pd-price"></div>
+          <button id="pdAddToCart" class="btn btn-solid">Add to cart</button>
+        </aside>
+      </div>
+    </section>
 
-    <script src="config.js"></script>
-    <!-- Add intl-tel-input JS (you already have the CSS) -->
-    <script src="https://cdn.jsdelivr.net/npm/intl-tel-input@19.5.6/build/js/intlTelInput.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/intl-tel-input@19.5.6/build/js/utils.js"></script>
-    <!-- Make sure your main script is included -->
-    <script src="script.js"></script>
+    <!-- Cart page -->
+    <section id="cart" class="cart-section hidden">
+      <div class="cart-container">
+        <h2>Your Cart</h2>
+        <div id="cartList" class="cart-list"></div>
+        <div class="cart-footer">
+          <div class="cart-total">Total: <span id="cartTotal">R0.00</span></div>
+          <button class="btn btn-solid" id="checkoutBtn" disabled>Checkout</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Login Modal -->
+  <div id="loginModal" class="modal">
+    <div class="modal-content">
+      <button id="closeLogin" class="modal-close" aria-label="Close">×</button>
+      <h2>Login</h2>
+      <form id="loginForm">
+        <div class="form-group">
+          <label for="loginEmail">Email</label>
+          <input type="email" id="loginEmail" required />
+        </div>
+        <div class="form-group">
+          <label for="loginPassword">Password</label>
+          <div class="password-wrap">
+            <input type="password" id="loginPassword" required />
+            <button type="button" id="showLoginPassword" class="show-password-btn">Show</button>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-solid" style="width:100%;">Login</button>
+        <p style="margin-top:8px;font-size:.9em;">
+          Don’t have an account?
+          <a href="#" id="switchToSignup">Sign up</a>
+        </p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Signup Modal -->
+  <div id="signupModal" class="modal">
+    <div class="modal-content">
+      <button id="closeSignup" class="modal-close" aria-label="Close">×</button>
+      <h2>Create Account</h2>
+      <form id="signupForm">
+        <div class="form-group">
+          <label for="signupFirstName">First Name</label>
+          <input type="text" id="signupFirstName" required />
+        </div>
+        <div class="form-group">
+          <label for="signupMiddleName">Middle Name</label>
+          <input type="text" id="signupMiddleName" />
+        </div>
+        <div class="form-group">
+          <label for="signupLastName">Last Name</label>
+          <input type="text" id="signupLastName" required />
+        </div>
+        <div class="form-group">
+          <label for="signupPhoneNumber">Phone Number</label>
+          <input id="signupPhoneNumber" type="tel" required />
+        </div>
+        <div class="form-group">
+          <label for="signupAddress">Address</label>
+          <textarea id="signupAddress" rows="2" required></textarea>
+        </div>
+        <div class="form-group">
+          <label for="signupEmail">Email</label>
+          <input type="email" id="signupEmail" required />
+        </div>
+        <div class="form-group">
+          <label for="signupPassword">Password</label>
+          <div class="password-wrap">
+            <input type="password" id="signupPassword" required />
+            <button type="button" id="showSignupPassword" class="show-password-btn">Show</button>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-solid" style="width:100%;">Create Account</button>
+        <p style="margin-top:8px;font-size:.9em;">
+          Already have an account?
+          <a href="#" id="switchToLogin">Log in</a>
+        </p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/intl-tel-input@19.5.6/build/js/intlTelInput.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/intl-tel-input@19.5.6/build/js/utils.js"></script>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>
