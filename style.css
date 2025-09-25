@@ -721,3 +721,53 @@ button[disabled], .btn[aria-busy="true"] { opacity: 0.7; cursor: not-allowed; }
   object-fit: contain;
   display: block;
 }
+
+/* Lock page scroll when a modal is open */
+.no-scroll { overflow: hidden; }
+
+/* Modal backdrop */
+#authModal, #loginModal, #signupModal {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.6);
+  display: none; z-index: 2000;
+  overscroll-behavior: contain; /* stop scroll chaining */
+}
+
+/* Modal panel */
+#authModal .modal-content,
+#loginModal .modal-content,
+#signupModal .modal-content {
+  width: min(520px, 96vw);
+  max-height: 90dvh;                 /* dvh fixes mobile browser chrome */
+  margin: 6dvh auto;
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;                  /* content scrolls in .modal-body */
+  display: flex; flex-direction: column;
+}
+
+/* Scrollable body (add this wrapper in HTML if not present) */
+.modal-body {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch; /* smooth iOS scroll */
+  padding: 16px;
+}
+
+/* Sticky footer with actions always visible */
+.modal-footer {
+  position: sticky; bottom: 0;
+  background: #fff;
+  padding: 12px 16px;
+  border-top: 1px solid #eee;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+.modal-footer .btn { width: 100%; }
+
+/* Fallback if you can't add .modal-body/.modal-footer wrappers */
+#authModal .modal-content.fallback-scroll,
+#loginModal .modal-content.fallback-scroll,
+#signupModal .modal-content.fallback-scroll {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+}

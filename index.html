@@ -181,44 +181,46 @@
     <div class="modal-content">
       <button id="closeSignup" class="modal-close" aria-label="Close">×</button>
       <h2>Create Account</h2>
-      <form id="signupForm">
-        <div class="form-group">
-          <label for="signupFirstName">First Name</label>
-          <input type="text" id="signupFirstName" required />
-        </div>
-        <div class="form-group">
-          <label for="signupMiddleName">Middle Name</label>
-          <input type="text" id="signupMiddleName" />
-        </div>
-        <div class="form-group">
-          <label for="signupLastName">Last Name</label>
-          <input type="text" id="signupLastName" required />
-        </div>
-        <div class="form-group">
-          <label for="signupPhoneNumber">Phone Number</label>
-          <input id="signupPhoneNumber" type="tel" required />
-        </div>
-        <div class="form-group">
-          <label for="signupAddress">Address</label>
-          <textarea id="signupAddress" rows="2" required></textarea>
-        </div>
-        <div class="form-group">
-          <label for="signupEmail">Email</label>
-          <input type="email" id="signupEmail" required />
-        </div>
-        <div class="form-group">
-          <label for="signupPassword">Password</label>
-          <div class="password-wrap">
-            <input type="password" id="signupPassword" required />
-            <button type="button" id="showSignupPassword" class="show-password-btn">Show</button>
+      <div class="modal-body">
+        <!-- signup form -->
+        <form id="signupForm">
+          <div class="form-group">
+            <label for="signupFirstName">First Name</label>
+            <input type="text" id="signupFirstName" required />
           </div>
-        </div>
-        <button type="submit" class="btn btn-solid" style="width:100%;">Create Account</button>
-        <p style="margin-top:8px;font-size:.9em;">
-          Already have an account?
-          <a href="#" id="switchToLogin">Log in</a>
-        </p>
-      </form>
+          <div class="form-group">
+            <label for="signupMiddleName">Middle Name</label>
+            <input type="text" id="signupMiddleName" />
+          </div>
+          <div class="form-group">
+            <label for="signupLastName">Last Name</label>
+            <input type="text" id="signupLastName" required />
+          </div>
+          <div class="form-group">
+            <label for="signupPhoneNumber">Phone Number</label>
+            <input id="signupPhoneNumber" type="tel" required />
+          </div>
+          <div class="form-group">
+            <label for="signupAddress">Address</label>
+            <textarea id="signupAddress" rows="2" required></textarea>
+          </div>
+          <div class="form-group">
+            <label for="signupEmail">Email</label>
+            <input type="email" id="signupEmail" required />
+          </div>
+          <div class="form-group">
+            <label for="signupPassword">Password</label>
+            <div class="password-wrap">
+              <input type="password" id="signupPassword" required />
+              <button type="button" id="showSignupPassword" class="show-password-btn">Show</button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <div class="modal-footer">
+        <button id="signupSubmit" class="btn btn-solid">Sign Up</button>
+      </div>
     </div>
   </div>
 

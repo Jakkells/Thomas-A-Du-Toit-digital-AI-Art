@@ -6,26 +6,25 @@ function bindModalClose(modal) {
   if (!modal || modal.dataset.boundClose) return;
   modal.dataset.boundClose = '1';
 
+  const closeModal = () => {
+    modal.style.display = 'none';
+    document.body.classList.remove('no-scroll');
+    modal.dispatchEvent(new Event('modal:unbind'));
+  };
+
   // Buttons/links inside the modal that should close it
   modal.querySelectorAll('.modal-close, [data-close]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      modal.style.display = 'none';
-    });
+    btn.addEventListener('click', (e) => { e.preventDefault(); closeModal(); });
   });
 
   // Click on backdrop closes (assumes the modal container is the backdrop)
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) modal.style.display = 'none';
-  });
-
-  // Stop propagation inside content
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
   modal.querySelector('.modal-content')?.addEventListener('click', (e) => e.stopPropagation());
 
   // ESC key closes
-  const onEsc = (e) => { if (e.key === 'Escape') modal.style.display = 'none'; };
-  modal.addEventListener('modal:unbind', () => document.removeEventListener('keydown', onEsc));
+  const onEsc = (e) => { if (e.key === 'Escape') closeModal(); };
   document.addEventListener('keydown', onEsc);
+  modal.addEventListener('modal:unbind', () => document.removeEventListener('keydown', onEsc));
 }
 
 // Reusable loading state
@@ -56,8 +55,9 @@ function openLoginUI(which = 'login') {
   const modal = document.getElementById('authModal') || document.getElementById(`${which}Modal`);
   if (modal) {
     modal.style.display = 'block';
+    document.body.classList.add('no-scroll');   // lock background scroll
     bindModalClose(modal);
-    // bind forms after shown
+    // Bind forms after shown, so submit buttons exist
     setTimeout(() => { bindLoginForm(); bindSignupForm(); bindOauthButtons(); }, 0);
     return;
   }
