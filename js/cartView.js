@@ -4,7 +4,7 @@ import { getActiveCartId, getCartSummaryCount, removeFromCart } from './cart.js'
 const ZAR = new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR' });
 
 function firstImage(csv) {
-  return (csv || '').split(',').map(s => s.trim()).filter(Boolean)[0] || 'https://via.placeholder.com/300?text=No+Image';
+  return (csv || '').split(',').map(s => s.trim()).filter(Boolean)[0] || 'https://via.placeholder.com/120?text=No+Image';
 }
 
 async function getCartItems() {
@@ -65,12 +65,12 @@ function render(items) {
 
     li.innerHTML = `
       <div class="cart-thumb"><img src="${thumb}" alt="Product"/></div>
-      <div>
+      <div class="cart-center">
         <div class="cart-name">${it.name}</div>
         <div class="cart-qty">Qty: ${it.qty} × ${ZAR.format(it.price)}</div>
+        <div class="cart-subtotal">${ZAR.format(subtotal)}</div>
       </div>
-      <div class="cart-subtotal">${ZAR.format(subtotal)}</div>
-      <button class="cart-remove" data-id="${it.product_id}">Remove</button>
+      <a href="#" class="cart-remove-link" data-id="${it.product_id}" aria-label="Remove ${it.name}">Remove</a>
     `;
     frag.appendChild(li);
   });
@@ -93,29 +93,40 @@ export async function loadCartPage() {
 }
 
 export function initCartView() {
+  // Cart button -> #cart
   const btn = document.getElementById('cartBtn');
   if (btn && !btn.dataset.bound) {
     btn.dataset.bound = '1';
     btn.addEventListener('click', () => { location.hash = '#cart'; });
   }
 
-  // Remove handler
+  // Remove handler (delegated)
   const list = document.getElementById('cartList');
   if (list && !list.dataset.bound) {
     list.dataset.bound = '1';
     list.addEventListener('click', async (e) => {
-      const btn = e.target.closest?.('.cart-remove');
-      if (!btn) return;
-      const id = btn.dataset.id;
-      await removeFromCart(id);
-      await loadCartPage();
+      const link = e.target.closest?.('.cart-remove-link');
+      if (!link) return;
+      e.preventDefault();
+
+      const id = link.dataset.id;
+      link.textContent = 'Removing...';
+      link.style.pointerEvents = 'none';
+
+      try {
+        await removeFromCart(id);
+        await loadCartPage();   // re-render list and totals
+      } catch (err) {
+        alert('Failed to remove: ' + (err?.message || err));
+        link.textContent = 'Remove';
+        link.style.pointerEvents = '';
+      }
     });
   }
 
-  // Update badge on changes
+  // Badge updates
   window.addEventListener('cart:changed', refreshCartBadge);
   window.addEventListener('storage', (e) => { if (e.key === 'cart') refreshCartBadge(); });
 
-  // Initial badge
   refreshCartBadge();
 }

@@ -1,8 +1,7 @@
 import { supabase } from './supabaseClient.js';
 import { initAuth } from './auth.js';
 import { setAdminNav } from './nav.js';
-import { showUserUI } from './profile.js';
-import { initMaintenance, setMaintenanceAccess } from './maintenance.js';
+import { setMaintenanceAccess } from './maintenance.js';
 import { initProducts } from './products.js';
 import { loadProductDetailFromHash } from './productDetail.js';
 import { initCartView, loadCartPage } from './cartView.js';
@@ -21,16 +20,48 @@ function showSection(sectionId) {
 function route() {
   const hash = (location.hash || '#shop');
   const section = hash.split('?')[0].replace('#', '') || 'shop';
+
+  // Guard: non-admins cannot view maintenance
+  if (section === 'maintenance' && !isAdmin) {
+    location.hash = '#shop';
+    return;
+  }
+
   showSection(section);
   if (section === 'product') loadProductDetailFromHash();
   if (section === 'cart') loadCartPage();
 }
 
+function initMobileMenu() {
+  const btn = document.getElementById('menuToggle');
+  const nav = document.getElementById('siteNav');
+  if (!btn || !nav || btn.dataset.bound) return;
+  btn.dataset.bound = '1';
+
+  const setOpen = (open) => {
+    document.body.classList.toggle('nav-open', open);
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  };
+
+  btn.addEventListener('click', () => {
+    setOpen(!document.body.classList.contains('nav-open'));
+  });
+
+  // Close on link click
+  nav.addEventListener('click', (e) => {
+    const t = e.target;
+    if (t && t.tagName === 'A') setOpen(false);
+  });
+
+  // Close on route change
+  window.addEventListener('hashchange', () => setOpen(false));
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   initAuth();
-  initMaintenance();
   initProducts();
   initCartView();
+  initMobileMenu();
 
   route();
   window.addEventListener('hashchange', route);
@@ -55,4 +86,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     setAdminNav(false);
     setMaintenanceAccess(false);
   }
+
+  // React to auth changes from auth.js
+  window.addEventListener('auth:changed', (e) => {
+    isAdmin = !!e.detail?.isAdmin;
+    setAdminNav(isAdmin);
+
+    // If user lost admin while on maintenance, kick to shop
+    if (!isAdmin && (location.hash || '').startsWith('#maintenance')) {
+      location.hash = '#shop';
+      return;
+    }
+
+    // Update access if currently on maintenance
+    const current = (location.hash || '#shop').split('?')[0].replace('#', '') || 'shop';
+    setMaintenanceAccess(isAdmin && current === 'maintenance');
+  });
 });

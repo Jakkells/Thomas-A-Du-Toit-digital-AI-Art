@@ -4,60 +4,81 @@ function emitCartChanged() {
   window.dispatchEvent(new CustomEvent('cart:changed'));
 }
 
+// Ensure this exists
 export async function getActiveCartId() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
-
   const { data: cart } = await supabase
-    .from('carts')
-    .select('id')
-    .eq('user_id', user.id)
-    .eq('status', 'active')
-    .maybeSingle();
-
+    .from('carts').select('id')
+    .eq('user_id', user.id).eq('status', 'active').maybeSingle();
   if (cart?.id) return cart.id;
-
   const { data: created, error } = await supabase
-    .from('carts')
-    .insert([{ user_id: user.id }])
-    .select('id')
-    .single();
-
+    .from('carts').insert([{ user_id: user.id }]).select('id').single();
   if (error) throw error;
   return created.id;
 }
 
+// ADD THIS: export addToCart
 export async function addToCart(product, qty = 1) {
   const { data: { user } } = await supabase.auth.getUser();
+  // Guest cart -> localStorage
   if (!user) {
     const items = JSON.parse(localStorage.getItem('cart') || '[]');
-    const i = items.findIndex(x => x.id === product.id);
+    const i = items.findIndex(x => String(x.id) === String(product.id));
     if (i >= 0) items[i].qty += qty;
     else items.push({ id: product.id, name: product.name, price: Number(product.price || 0), qty });
     localStorage.setItem('cart', JSON.stringify(items));
     emitCartChanged();
     return { local: true };
   }
-
+  // Authenticated -> DB upsert (qty +=)
   const cartId = await getActiveCartId();
-  const row = { cart_id: cartId, product_id: product.id, qty, price_at_add: Number(product.price || 0) };
-  const { error } = await supabase.from('cart_items').upsert([row], { onConflict: 'cart_id,product_id' });
+  const { data: existing } = await supabase
+    .from('cart_items')
+    .select('qty').eq('cart_id', cartId).eq('product_id', product.id).maybeSingle();
+  const newQty = (existing?.qty || 0) + qty;
+
+  const row = {
+    cart_id: cartId,
+    product_id: product.id,
+    qty: newQty,
+    price_at_add: Number(product.price || 0)
+  };
+  const { error } = await supabase
+    .from('cart_items')
+    .upsert([row], { onConflict: 'cart_id,product_id' });
   if (error) throw error;
+
   emitCartChanged();
   return { local: false };
 }
 
 export async function removeFromCart(productId) {
   const { data: { user } } = await supabase.auth.getUser();
+
+  // Guest: remove from localStorage
   if (!user) {
-    const items = JSON.parse(localStorage.getItem('cart') || '[]').filter(it => it.id !== productId);
+    const items = JSON.parse(localStorage.getItem('cart') || '[]')
+      .filter(it => String(it.id) !== String(productId));
     localStorage.setItem('cart', JSON.stringify(items));
     emitCartChanged();
-    return;
+    return { local: true };
   }
+
+  // Logged-in: delete from cart_items
   const cartId = await getActiveCartId();
-  await supabase.from('cart_items').delete().eq('cart_id', cartId).eq('product_id', productId);
+  const { error } = await supabase
+    .from('cart_items')
+    .delete()
+    .eq('cart_id', cartId)
+    .eq('product_id', productId);
+
+  if (error) {
+    console.error('Remove from cart failed:', error);
+    throw error;
+  }
   emitCartChanged();
+  return { local: false };
 }
 
 export async function getCartSummaryCount() {
