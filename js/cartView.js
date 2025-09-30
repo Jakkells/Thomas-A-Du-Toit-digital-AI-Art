@@ -7,6 +7,9 @@ function firstImage(csv) {
   return (csv || '').split(',').map(s => s.trim()).filter(Boolean)[0] || 'https://via.placeholder.com/120?text=No+Image';
 }
 
+// Keep latest loaded items for optimistic UI updates
+let currentItems = [];
+
 async function getCartItems() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
@@ -86,9 +89,14 @@ async function refreshCartBadge() {
   if (badge) badge.textContent = String(n);
 }
 
+function setCartBadge(n) {
+  const badge = document.getElementById('cartCount');
+  if (badge) badge.textContent = String(n);
+}
+
 export async function loadCartPage() {
-  const items = await getCartItems();
-  render(items);
+  currentItems = await getCartItems();
+  render(currentItems);
   refreshCartBadge();
 }
 
@@ -110,16 +118,20 @@ export function initCartView() {
       e.preventDefault();
 
       const id = link.dataset.id;
-      link.textContent = 'Removing...';
-      link.style.pointerEvents = 'none';
+      // Optimistic UI: remove locally and update totals/badge immediately
+      const nextItems = currentItems.filter(it => String(it.product_id) !== String(id));
+      currentItems = nextItems;
+      render(currentItems);
+      const optimisticCount = currentItems.reduce((s, it) => s + (it.qty || 0), 0);
+      setCartBadge(optimisticCount);
 
       try {
         await removeFromCart(id);
-        await loadCartPage();   // re-render list and totals
+        // Success: event cart:changed will refresh the badge; items already removed visually
       } catch (err) {
         alert('Failed to remove: ' + (err?.message || err));
-        link.textContent = 'Remove';
-        link.style.pointerEvents = '';
+        // Restore state by fully reloading cart from source of truth
+        await loadCartPage();
       }
     });
   }

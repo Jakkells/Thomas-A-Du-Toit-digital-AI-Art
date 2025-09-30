@@ -28,6 +28,8 @@ function route() {
   }
 
   showSection(section);
+  // Re-assert admin nav link on each navigation (defensive)
+  setAdminNav(isAdmin);
   if (section === 'product') loadProductDetailFromHash();
   if (section === 'cart') loadCartPage();
 }

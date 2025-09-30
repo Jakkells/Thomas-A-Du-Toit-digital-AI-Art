@@ -9,20 +9,32 @@ const FOLDER = 'product-pictures';
 
 let selectedFiles = [];
 
-// Get an access token to authenticate REST uploads (non-blocking)
-async function getAccessToken() {
-  // 1) Try localStorage first (fast path used by supabase-js)
+// Decode a JWT without verifying, to read exp
+function decodeJwt(token) {
+  try {
+    const [, payload] = token.split('.');
+    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+    return JSON.parse(json);
+  } catch { return null; }
+}
+
+function getLocalAuthToken() {
   try {
     const key = Object.keys(localStorage).find(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
-    if (key) {
-      const raw = localStorage.getItem(key);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        const token = parsed?.access_token || parsed?.currentSession?.access_token || parsed?.accessToken || null;
-        if (token) return token;
-      }
-    }
-  } catch {}
+    if (!key) return null;
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const token = parsed?.access_token || parsed?.currentSession?.access_token || parsed?.accessToken || null;
+    return token || null;
+  } catch { return null; }
+}
+
+// Get an access token (tries local fast-path, refreshes if expired/near-expiry)
+async function getAccessToken() {
+  // 1) Try localStorage first (fast path used by supabase-js)
+  const local = getLocalAuthToken();
+  if (local) return local;
 
   // 2) Fallback: try supabase.auth.getSession but with a short timeout to avoid hangs
   try {
@@ -34,6 +46,30 @@ async function getAccessToken() {
   return null;
 }
 
+async function getFreshAccessToken() {
+  // Try local and check expiry; if exp <= now+60, refresh session
+  const skew = 60; // seconds
+  let token = getLocalAuthToken();
+  let exp = token ? decodeJwt(token)?.exp : null;
+  const now = Math.floor(Date.now() / 1000);
+  if (!token || (exp && exp <= now + skew)) {
+    try {
+      const { data, error } = await supabase.auth.refreshSession();
+      if (!error && data?.session?.access_token) {
+        return data.session.access_token;
+      }
+    } catch {}
+    // Fallback to getSession (may auto-refresh)
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (data?.session?.access_token) return data.session.access_token;
+    } catch {}
+  }
+  if (token) return token;
+  // Last resort: use regular getter (may return null)
+  return await getAccessToken();
+}
+
 function buildPublicUrl(path) {
   // Buckets marked Public can serve via this deterministic URL; avoid network call
   // Use encodeURI to keep path slashes intact but escape spaces, etc.
@@ -41,13 +77,13 @@ function buildPublicUrl(path) {
 }
 
 async function uploadFileDirect(file, path) {
-  const token = await getAccessToken();
+  let token = await getFreshAccessToken();
   if (!token) throw new Error('Not authenticated. Please log in again.');
 
   const url = `${window.SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort('upload timeout'), 30000);
-  const res = await fetch(url, {
+  let res = await fetch(url, {
     method: 'POST',
     headers: {
       'authorization': `Bearer ${token}`,
@@ -62,6 +98,27 @@ async function uploadFileDirect(file, path) {
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
+    // If token expired, try to refresh once and retry
+    if (/exp\"?\s*claim|jwt|unauthorized|expired/i.test(text) || res.status === 401 || res.status === 403) {
+      token = await getFreshAccessToken();
+      if (!token) throw new Error(`Upload failed (${res.status}): ${text || res.statusText}`);
+      const retry = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'authorization': `Bearer ${token}`,
+          'apikey': window.SUPABASE_KEY,
+          'x-upsert': 'true',
+          'content-type': file.type || 'application/octet-stream'
+        },
+        body: file,
+        signal: controller.signal
+      });
+      if (!retry.ok) {
+        const t2 = await retry.text().catch(() => '');
+        throw new Error(`Upload failed (${retry.status}): ${t2 || retry.statusText}`);
+      }
+      return path;
+    }
     throw new Error(`Upload failed (${res.status}): ${text || res.statusText}`);
   }
   return path;
@@ -215,7 +272,7 @@ function isForeignKeyConflictStatus(status) {
 }
 
 async function restDelete(path, timeoutMs = 5000) {
-  const token = await getAccessToken();
+  const token = await getFreshAccessToken();
   if (!token) throw new Error('Not authenticated.');
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort('delete timeout'), timeoutMs);
@@ -234,7 +291,7 @@ async function restDelete(path, timeoutMs = 5000) {
 }
 
 async function restGet(path, timeoutMs = 5000) {
-  const token = await getAccessToken();
+  const token = await getFreshAccessToken();
   if (!token) throw new Error('Not authenticated.');
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort('get timeout'), timeoutMs);
@@ -252,7 +309,7 @@ async function restGet(path, timeoutMs = 5000) {
 }
 
 async function restPost(table, row, timeoutMs = 8000) {
-  const token = await getAccessToken();
+  const token = await getFreshAccessToken();
   if (!token) throw new Error('Not authenticated.');
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort('post timeout'), timeoutMs);
@@ -469,6 +526,12 @@ export function initMaintenance() {
 
         // Reconcile with server state in background
         loadProducts(); // refresh both grids
+
+        // User request: force a full refresh after a product has been uploaded
+        // to avoid any blank/stale state issues from prior navigation
+        setTimeout(() => {
+          try { location.reload(); } catch {}
+        }, 200);
       } catch (err) {
         console.error('Add product failed:', err);
         alert('Failed to add product: ' + (err?.message || err));

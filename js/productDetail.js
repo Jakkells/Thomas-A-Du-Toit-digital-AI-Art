@@ -158,16 +158,16 @@ export async function loadProductDetailFromHash() {
   applyDetailVisibility([urls[0]].filter(Boolean));
 
   const btn = document.getElementById('pdAddToCart');
-  if (btn && !btn.dataset.bound) {
-    btn.dataset.bound = '1';
-    btn.addEventListener('click', async () => {
+  if (btn) {
+    // Always rebind to capture the current product 'p'
+    btn.onclick = async () => {
       try {
         await addToCart(p, 1);
         alert('Added to cart.');
       } catch (e) {
         alert('Failed: ' + (e?.message || e));
       }
-    });
+    };
   }
 }
 

@@ -4,25 +4,41 @@ function emitCartChanged() {
   window.dispatchEvent(new CustomEvent('cart:changed'));
 }
 
+// Simple per-session caches to avoid extra round-trips
+let _cachedUserId = undefined;
+let _cachedCartId = undefined;
+
+async function getUserId() {
+  if (_cachedUserId) return _cachedUserId;
+  const { data: { user } } = await supabase.auth.getUser();
+  _cachedUserId = user?.id || null;
+  return _cachedUserId;
+}
+
+// Clear caches when auth changes (event emitted by auth.js)
+window.addEventListener('auth:changed', () => { _cachedUserId = undefined; _cachedCartId = undefined; });
+
 // Ensure this exists
 export async function getActiveCartId() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  const userId = await getUserId();
+  if (!userId) return null;
+  if (_cachedCartId) return _cachedCartId;
   const { data: cart } = await supabase
     .from('carts').select('id')
-    .eq('user_id', user.id).eq('status', 'active').maybeSingle();
-  if (cart?.id) return cart.id;
+    .eq('user_id', userId).eq('status', 'active').maybeSingle();
+  if (cart?.id) { _cachedCartId = cart.id; return cart.id; }
   const { data: created, error } = await supabase
-    .from('carts').insert([{ user_id: user.id }]).select('id').single();
+    .from('carts').insert([{ user_id: userId }]).select('id').single();
   if (error) throw error;
-  return created.id;
+  _cachedCartId = created.id;
+  return _cachedCartId;
 }
 
 // ADD THIS: export addToCart
 export async function addToCart(product, qty = 1) {
-  const { data: { user } } = await supabase.auth.getUser();
+  const userId = await getUserId();
   // Guest cart -> localStorage
-  if (!user) {
+  if (!userId) {
     const items = JSON.parse(localStorage.getItem('cart') || '[]');
     const i = items.findIndex(x => String(x.id) === String(product.id));
     if (i >= 0) items[i].qty += qty;
@@ -54,10 +70,10 @@ export async function addToCart(product, qty = 1) {
 }
 
 export async function removeFromCart(productId) {
-  const { data: { user } } = await supabase.auth.getUser();
+  const userId = await getUserId();
 
   // Guest: remove from localStorage
-  if (!user) {
+  if (!userId) {
     const items = JSON.parse(localStorage.getItem('cart') || '[]')
       .filter(it => String(it.id) !== String(productId));
     localStorage.setItem('cart', JSON.stringify(items));
@@ -82,8 +98,8 @@ export async function removeFromCart(productId) {
 }
 
 export async function getCartSummaryCount() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
+  const userId = await getUserId();
+  if (!userId) {
     const items = JSON.parse(localStorage.getItem('cart') || '[]');
     return items.reduce((s, it) => s + (it.qty || 0), 0);
   }
@@ -94,8 +110,8 @@ export async function getCartSummaryCount() {
 
 export async function mergeLocalCartToDb() {
   // Only merge if logged in
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
+  const userId = await getUserId();
+  if (!userId) return;
 
   // Read guest cart
   const items = JSON.parse(localStorage.getItem('cart') || '[]');
