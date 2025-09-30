@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient.js';
+import { showGlobalMsg } from './utils/dom.js';
 
 const ZAR = new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR' });
 
@@ -47,7 +48,13 @@ export async function loadProducts() {
 
   grids.forEach(grid => {
     if (error) {
+      console.error('Failed to load products:', error);
       grid.innerHTML = '<p style="color:red;">Failed to load products.</p>';
+      // Helpful hint in production if RLS blocks public SELECT
+      const msg = String(error?.message || '').toLowerCase();
+      if (error?.code === '401' || error?.code === '403' || msg.includes('permission') || msg.includes('rls')) {
+        showGlobalMsg('Products are not publicly readable. In Supabase, enable a SELECT policy for public on table "products".');
+      }
       return;
     }
     if (!data || data.length === 0) {
