@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient.js';
+import { showGlobalMsg } from './utils/dom.js';
 import { initAuth } from './auth.js';
 import { setAdminNav } from './nav.js';
 import { setMaintenanceAccess, initMaintenance } from './maintenance.js';
@@ -60,6 +61,16 @@ function initMobileMenu() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // Show any unexpected runtime errors
+  window.addEventListener('error', (e) => {
+    console.error('Runtime error:', e.error || e.message || e);
+    showGlobalMsg('An error occurred while loading the app. Please refresh.');
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    console.error('Unhandled promise rejection:', e.reason);
+    showGlobalMsg('A network or app error occurred. Please try again.');
+  });
+
   initAuth();
   initProducts();
   initCartView();
