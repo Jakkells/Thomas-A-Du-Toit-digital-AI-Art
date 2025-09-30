@@ -10,6 +10,35 @@ function firstImage(urls) {
     .filter(Boolean)[0] || 'https://via.placeholder.com/600x600?text=No+Image';
 }
 
+// Simple in-memory cache to accelerate product detail
+window.__PRODUCTS_CACHE = window.__PRODUCTS_CACHE || {};
+function cacheProducts(list) {
+  try {
+    const cache = window.__PRODUCTS_CACHE;
+    (list || []).forEach(p => {
+      if (!p || p.id == null) return;
+      cache[String(p.id)] = {
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        item_type: p.item_type,
+        image_urls: p.image_urls,
+        price: p.price
+      };
+    });
+  } catch {}
+}
+
+function preloadImage(src) {
+  if (!src) return;
+  try {
+    const img = new Image();
+    img.decoding = 'async';
+    img.loading = 'eager';
+    img.src = src;
+  } catch {}
+}
+
 export function productCard(p, { deletable = false } = {}) {
   const img = firstImage(p.image_urls);
   const out = (p.stock ?? 0) <= 0;
@@ -46,6 +75,8 @@ export async function loadProducts() {
     .select('id, name, item_type, description, image_urls, stock, price, created_at')
     .order('created_at', { ascending: false });
 
+  if (Array.isArray(data)) cacheProducts(data);
+
   grids.forEach(grid => {
     if (error) {
       console.error('Failed to load products:', error);
@@ -65,6 +96,22 @@ export async function loadProducts() {
     const deletable = grid.id === 'productsGridMaintenance';
     data.forEach(p => frag.appendChild(productCard(p, { deletable })));
     grid.appendChild(frag);
+
+    // Prefetch first image and ensure cache is warm on hover/touch
+    grid.querySelectorAll('a.product-card').forEach(a => {
+      if (a.dataset.prefetchBound) return;
+      a.dataset.prefetchBound = '1';
+      const doPrefetch = () => {
+        const href = a.getAttribute('href') || '';
+        const id = (href.split('id=')[1] || '').split('&')[0];
+        const p = (window.__PRODUCTS_CACHE || {})[String(id)];
+        const img = p ? firstImage(p.image_urls) : null;
+        if (img) preloadImage(img);
+      };
+      a.addEventListener('mouseenter', doPrefetch);
+      a.addEventListener('touchstart', doPrefetch, { passive: true });
+      a.addEventListener('click', doPrefetch);
+    });
   });
 }
 

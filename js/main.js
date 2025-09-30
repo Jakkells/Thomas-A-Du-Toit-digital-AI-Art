@@ -58,6 +58,21 @@ function initMobileMenu() {
 
   // Close on route change
   window.addEventListener('hashchange', () => setOpen(false));
+
+  // Close when tapping/clicking outside the menu (the white space area)
+  document.addEventListener('click', (e) => {
+    if (!document.body.classList.contains('nav-open')) return;
+    const target = e.target;
+    if (nav.contains(target)) return;      // clicks inside menu: ignore
+    if (btn.contains(target)) return;      // toggle button: handled separately
+    setOpen(false);
+  });
+
+  // Optional: ESC key closes the menu for accessibility
+  document.addEventListener('keydown', (e) => {
+    if (!document.body.classList.contains('nav-open')) return;
+    if (e.key === 'Escape') setOpen(false);
+  });
 }
 
 document.addEventListener('DOMContentLoaded', async () => {

@@ -1,8 +1,18 @@
 import { supabase } from './supabaseClient.js';
 import { loadProducts, productCard } from './products.js';
 
-function show(el) { if (el) el.style.display = 'block'; }
-function hide(el) { if (el) el.style.display = 'none'; }
+function show(el) {
+  if (el) {
+    el.style.display = 'block';
+    document.body.classList.add('no-scroll'); // prevent background scroll
+  }
+}
+function hide(el) {
+  if (el) {
+    el.style.display = 'none';
+    document.body.classList.remove('no-scroll'); // restore background scroll
+  }
+}
 
 const BUCKET = 'pictures';
 const FOLDER = 'product-pictures';

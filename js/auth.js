@@ -50,6 +50,44 @@ function ensureLogoutStyle() {
   btn.classList.add('btn', 'btn-outline-light');
 }
 
+// Shared logout routine for header button and mobile menu item
+async function doLogout(source) {
+  const headerBtn = document.getElementById('logoutBtn');
+  const navLink = document.getElementById('navLogoutLink');
+  try {
+    if (source === 'header' && headerBtn) setBtnLoading(headerBtn, true, 'Logging out…');
+    if (source === 'nav' && navLink) { navLink.setAttribute('aria-busy', 'true'); navLink.style.opacity = '0.7'; }
+    // Explicit local scope sign-out
+    await supabase.auth.signOut({ scope: 'local' });
+    // Hard-clear any lingering sb-* auth token (defensive)
+    try {
+      Object.keys(localStorage).forEach((k) => {
+        if (!k.startsWith('sb-')) return;
+        if (k.endsWith('-auth-token') || k.endsWith('-persist-session') || k.includes('auth-token')) {
+          localStorage.removeItem(k);
+        }
+      });
+    } catch {}
+    // Immediately reflect logged-out UI without waiting on event loop
+    try { renderLoggedOutUI(); } catch {}
+    // Route home
+    try { if (!location.hash || location.hash !== '#shop') location.hash = '#shop'; } catch {}
+    // Clear lightweight caches
+    try { sessionStorage.removeItem('cart:last'); } catch {}
+  } catch (err) {
+    alert('Failed to logout. Please try again.');
+  } finally {
+    if (headerBtn) setBtnLoading(headerBtn, false);
+    if (navLink) { navLink.removeAttribute('aria-busy'); navLink.style.opacity = ''; }
+    // Close mobile nav if open
+    document.body.classList.remove('nav-open');
+    const menuToggle = document.getElementById('menuToggle');
+    if (menuToggle) menuToggle.setAttribute('aria-expanded', 'false');
+    // As a final guarantee, perform a light reload to fully reset state
+    setTimeout(() => { try { location.reload(); } catch {} }, 150);
+  }
+}
+
 // Open modal/section and bind form + close handlers
 function openLoginUI(which = 'login') {
   const modal = document.getElementById('authModal') || document.getElementById(`${which}Modal`);
@@ -58,12 +96,12 @@ function openLoginUI(which = 'login') {
     document.body.classList.add('no-scroll');   // lock background scroll
     bindModalClose(modal);
     // Bind forms after shown, so submit buttons exist
-    setTimeout(() => { bindLoginForm(); bindSignupForm(); bindOauthButtons(); }, 0);
+    setTimeout(() => { bindLoginForm(); bindSignupForm(); bindOauthButtons(); if (which === 'signup') ensurePhoneInput(); }, 0);
     return;
   }
   if (document.getElementById(which)) {
     location.hash = `#${which}`;
-    setTimeout(() => { bindLoginForm(); bindSignupForm(); bindOauthButtons(); }, 0);
+    setTimeout(() => { bindLoginForm(); bindSignupForm(); bindOauthButtons(); if (which === 'signup') ensurePhoneInput(); }, 0);
     return;
   }
   console.warn('Auth UI not found.');
@@ -178,12 +216,85 @@ function emitAuthChanged(isAdmin, user = null) {
   window.dispatchEvent(new CustomEvent('auth:changed', { detail: { isAdmin: !!isAdmin, user } }));
 }
 
+// Insert a Logout item into the hamburger nav (mobile)
+function ensureLogoutInMenu() {
+  const menu = document.querySelector('.nav-menu');
+  if (!menu) return;
+  let li = document.getElementById('nav-logout');
+  if (!li) {
+    li = document.createElement('li');
+    li.id = 'nav-logout';
+    li.innerHTML = '<a id="navLogoutLink" href="#">Logout</a>';
+    menu.appendChild(li);
+  }
+  const link = document.getElementById('navLogoutLink');
+  if (link && !link.dataset.bound) {
+    link.dataset.bound = '1';
+    link.addEventListener('click', async (e) => { e.preventDefault(); await doLogout('nav'); });
+  }
+}
+
+function removeLogoutFromMenu() {
+  const li = document.getElementById('nav-logout');
+  if (li) li.remove();
+}
+
+// Insert Login/Sign Up items into the hamburger nav (mobile when logged out)
+function ensureAuthLinksInMenu() {
+  const menu = document.querySelector('.nav-menu');
+  if (!menu) return;
+  // Login
+  let liLogin = document.getElementById('nav-login');
+  if (!liLogin) {
+    liLogin = document.createElement('li');
+    liLogin.id = 'nav-login';
+    liLogin.innerHTML = '<a id="navLoginLink" href="#">Login</a>';
+    menu.appendChild(liLogin);
+  }
+  const loginLink = document.getElementById('navLoginLink');
+  if (loginLink && !loginLink.dataset.bound) {
+    loginLink.dataset.bound = '1';
+    loginLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      // Close nav then open Login modal
+      document.body.classList.remove('nav-open');
+      const menuToggle = document.getElementById('menuToggle');
+      if (menuToggle) menuToggle.setAttribute('aria-expanded', 'false');
+      openLoginUI('login');
+    });
+  }
+  // Sign Up
+  let liSignup = document.getElementById('nav-signup');
+  if (!liSignup) {
+    liSignup = document.createElement('li');
+    liSignup.id = 'nav-signup';
+    liSignup.innerHTML = '<a id="navSignupLink" href="#">Sign Up</a>';
+    menu.appendChild(liSignup);
+  }
+  const signupLink = document.getElementById('navSignupLink');
+  if (signupLink && !signupLink.dataset.bound) {
+    signupLink.dataset.bound = '1';
+    signupLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.body.classList.remove('nav-open');
+      const menuToggle = document.getElementById('menuToggle');
+      if (menuToggle) menuToggle.setAttribute('aria-expanded', 'false');
+      openLoginUI('signup');
+    });
+  }
+}
+
+function removeAuthLinksFromMenu() {
+  const ids = ['nav-login', 'nav-signup'];
+  ids.forEach((id) => { const el = document.getElementById(id); if (el) el.remove(); });
+}
+
 function renderLoggedInUI(profile, user) {
   const auth = document.getElementById('authControls');
   if (!auth) return;
   const display = profile?.name || profile?.first_name || user?.email || 'Account';
   auth.innerHTML = `
-    <span id="userName" class="user-name">${display}</span>
+    <span id="userName" class="user-name" title="${display}">${display}</span>
     <button id="logoutBtn" class="btn btn-outline-light">Logout</button>
   `;
   ensureLogoutStyle();
@@ -191,12 +302,13 @@ function renderLoggedInUI(profile, user) {
   const logoutBtn = document.getElementById('logoutBtn');
   if (logoutBtn && !logoutBtn.dataset.bound) {
     logoutBtn.dataset.bound = '1';
-    logoutBtn.addEventListener('click', async () => {
-      setBtnLoading(logoutBtn, true, 'Logging out…');
-      await supabase.auth.signOut();
-    });
+    logoutBtn.addEventListener('click', async (e) => { e.preventDefault(); await doLogout('header'); });
   }
   const role = (profile?.role || '').toLowerCase();
+  // Expose Logout inside hamburger menu for mobile
+  ensureLogoutInMenu();
+  // Remove Login/Signup menu items when logged in
+  removeAuthLinksFromMenu();
   emitAuthChanged(role === 'admin', user);
 }
 
@@ -207,6 +319,10 @@ function renderLoggedOutUI() {
     <button class="btn btn-outline-light" id="loginBtn">Login</button>
     <button class="btn btn-outline-light" id="signupBtn">Sign Up</button>
   `;
+  // Remove mobile nav logout item when logged out
+  removeLogoutFromMenu();
+  // Add Login/Sign Up into hamburger menu (mobile)
+  ensureAuthLinksInMenu();
   bindAuthButtons();
   // Forms may be in a hidden modal; bind when present
   bindLoginForm();
@@ -233,4 +349,38 @@ export async function initAuth() {
       renderLoggedOutUI();
     }
   });
+}
+
+// Lazy-load phone input assets only when needed (signup)
+let intlAssetsLoaded = false;
+function ensurePhoneInput() {
+  if (intlAssetsLoaded) {
+    import('./phoneInput.js').then(m => m.initPhoneInput?.()).catch(() => {});
+    return;
+  }
+  const head = document.head;
+  const cssHref = 'https://cdn.jsdelivr.net/npm/intl-tel-input@19.5.6/build/css/intlTelInput.min.css';
+  const jsSrc = 'https://cdn.jsdelivr.net/npm/intl-tel-input@19.5.6/build/js/intlTelInput.min.js';
+  const utilSrc = 'https://cdn.jsdelivr.net/npm/intl-tel-input@19.5.6/build/js/utils.js';
+
+  // Add CSS once
+  if (!document.querySelector(`link[href="${cssHref}"]`)) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = cssHref;
+    head.appendChild(link);
+  }
+  // Load JS then utils, then init
+  const script = document.createElement('script');
+  script.src = jsSrc; script.defer = true;
+  script.onload = () => {
+    const utils = document.createElement('script');
+    utils.src = utilSrc; utils.defer = true;
+    utils.onload = () => {
+      intlAssetsLoaded = true;
+      import('./phoneInput.js').then(m => m.initPhoneInput?.()).catch(() => {});
+    };
+    head.appendChild(utils);
+  };
+  head.appendChild(script);
 }

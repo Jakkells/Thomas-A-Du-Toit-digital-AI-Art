@@ -101,6 +101,9 @@ export async function loadProductDetailFromHash() {
   const thumbsEl = document.getElementById('pdThumbs');
   const typeEl = document.getElementById('pdType');
   const descEl = document.getElementById('pdDesc');
+  const btn = document.getElementById('pdAddToCart');
+  // Reference object so the click handler can see updates after network fetch
+  const productRef = { value: null };
 
   if (!id) {
     if (nameEl) nameEl.textContent = 'Product';
@@ -112,12 +115,39 @@ export async function loadProductDetailFromHash() {
     return;
   }
 
-  // Reset UI while loading a new product
-  if (nameEl) nameEl.textContent = 'Loading…';
-  if (priceEl) priceEl.textContent = '';
-  if (typeEl) typeEl.textContent = '';
-  if (descEl) descEl.textContent = '';
-  setMainImage('');
+  // Try cache-first for instant paint
+  const cached = (window.__PRODUCTS_CACHE || {})[String(id)];
+  if (cached) {
+    const urlsC = parseCsvImages(cached.image_urls);
+    if (nameEl) nameEl.textContent = cached.name || 'Product';
+    if (priceEl) priceEl.textContent = ZAR.format(Number(cached.price || 0));
+    if (typeEl) typeEl.textContent = cached.item_type || '';
+    if (descEl) descEl.textContent = cached.description || '';
+    setMainImage(urlsC[0] || 'https://via.placeholder.com/800x1000?text=No+Image');
+    applyDetailVisibility([urlsC[0]].filter(Boolean));
+    productRef.value = cached;
+  } else {
+    // Reset UI while loading a new product
+    if (nameEl) nameEl.textContent = 'Loading…';
+    if (priceEl) priceEl.textContent = '';
+    if (typeEl) typeEl.textContent = '';
+    if (descEl) descEl.textContent = '';
+    setMainImage('');
+  }
+
+  // Bind click immediately; will use productRef which updates when fetch completes
+  if (btn) {
+    btn.onclick = async () => {
+      const prod = productRef.value;
+      if (!prod || !prod.id) { alert('Loading product…'); return; }
+      try {
+        await addToCart(prod, 1);
+        alert('Added to cart.');
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+      }
+    };
+  }
 
   const token = ++currentLoadToken;
   const { data: p, error } = await supabase
@@ -139,6 +169,12 @@ export async function loadProductDetailFromHash() {
     return;
   }
 
+  // Update cache with fresh data
+  try {
+    const cache = window.__PRODUCTS_CACHE || (window.__PRODUCTS_CACHE = {});
+    cache[String(p.id)] = p;
+  } catch {}
+
   const urls = parseCsvImages(p.image_urls);
   const section = document.getElementById('product');
   if (section) section.classList.toggle('single-image', urls.length <= 1);
@@ -157,18 +193,8 @@ export async function loadProductDetailFromHash() {
   updateArrows();
   applyDetailVisibility([urls[0]].filter(Boolean));
 
-  const btn = document.getElementById('pdAddToCart');
-  if (btn) {
-    // Always rebind to capture the current product 'p'
-    btn.onclick = async () => {
-      try {
-        await addToCart(p, 1);
-        alert('Added to cart.');
-      } catch (e) {
-        alert('Failed: ' + (e?.message || e));
-      }
-    };
-  }
+  // Point the click handler at the fresh product
+  productRef.value = p;
 }
 
 // Keep arrows updated on resize/orientation

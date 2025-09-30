@@ -70,13 +70,14 @@ button, .btn, input, select, textarea { min-height: 44px; }
 }
 
 /* Right side of header */
-.header-actions { display: flex; align-items: center; gap: 10px; }
+.header-actions { display: flex; align-items: center; gap: 10px; min-width: 0; }
 
 /* Auth area (where the user name is rendered) */
 #authControls {
   display: inline-flex;
   align-items: center;          /* vertical centering */
   gap: 8px;
+  min-width: 0;                 /* allow contents to shrink */
 }
 
 /* Optional chip style for the displayed name */
@@ -86,14 +87,22 @@ button, .btn, input, select, textarea { min-height: 44px; }
   line-height: 1;
   padding: 6px 10px;
   border-radius: 16px;
+  max-width: 40vw;              /* prevent pushing Logout off-screen */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .header-actions {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    padding: 8px var(--space);
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 8px var(--space);
+  min-width: 0;               /* allow #authControls to shrink inside */
 }
+
+/* Keep Logout button visible and non-shrinking */
+#logoutBtn { flex: 0 0 auto; }
 
 /* Menu toggle button for mobile */
 .menu-toggle {
@@ -120,6 +129,11 @@ button, .btn, input, select, textarea { min-height: 44px; }
 
 /* Desktop nav */
 #siteNav .nav-menu { display: flex; gap: 16px; }
+
+/* Hide nav-menu Logout item by default (only show on mobile) */
+#nav-logout { display: none; }
+/* Hide nav-menu auth items by default (only show on mobile) */
+#nav-login, #nav-signup { display: none; }
 
 /* Mobile nav: slide-over */
 @media (max-width: 768px) {
@@ -190,17 +204,17 @@ button, .btn, input, select, textarea { min-height: 44px; }
 }
 
 .modal-content {
-    background: #fff;
-    color: #000;
-    max-width: 480px;
-    margin: 10vh auto;
-    padding: 20px;
-    border-radius: 12px;
-    position: relative;
-    max-width: 520px;
-    width: min(520px, 92vw);
-    margin: 8vh auto;
-    border-radius: var(--radius);
+  background: #fff;
+  color: #000;
+  max-width: 520px;
+  width: min(520px, 92vw);
+  margin: 8vh auto;
+  border-radius: var(--radius);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  max-height: 90dvh;              /* viewport-aware */
+  overflow: hidden;               /* inner body scrolls */
 }
 
 .modal-close {
@@ -388,9 +402,27 @@ button, .btn, input, select, textarea { min-height: 44px; }
         font-size: 36px;
     }
 
-    .modal-content {
+  .modal-content {
         padding: 30px 20px;
     }
+
+  /* Tighter spacing and stronger truncation on smaller screens */
+  .header-actions { gap: 8px; }
+  #authControls { max-width: 70vw; }
+  .user-name, #userName { max-width: 46vw; padding: 4px 8px; }
+
+  /* Hide header auth buttons on mobile; use hamburger menu items instead */
+  #logoutBtn { display: none !important; }
+  #loginBtn, #signupBtn { display: none !important; }
+  /* Show the nav Logout item if present */
+  #nav-logout { display: list-item; }
+  /* Show nav Login/Sign Up when logged out */
+  #nav-login, #nav-signup { display: list-item; }
+}
+
+/* Ultra-small devices: hide the name if space is extremely constrained */
+@media (max-width: 360px) {
+  .user-name, #userName { display: none; }
 }
 
 /* Route helper */
@@ -721,6 +753,15 @@ button[disabled], .btn[aria-busy="true"] { opacity: 0.7; cursor: not-allowed; }
   border-radius: 12px;
   overflow: hidden;                  /* content scrolls in .modal-body */
   display: flex; flex-direction: column;
+}
+
+/* Product maintenance modal: allow the panel itself to scroll */
+#productModal .modal-content {
+  max-height: 90dvh;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px; /* restore padding since product modal doesn't use .modal-body */
+  margin: 6dvh auto;
 }
 
 /* Scrollable body (add this wrapper in HTML if not present) */

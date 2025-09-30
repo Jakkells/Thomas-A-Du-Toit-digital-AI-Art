@@ -7,15 +7,64 @@ function firstImage(csv) {
   return (csv || '').split(',').map(s => s.trim()).filter(Boolean)[0] || 'https://via.placeholder.com/120?text=No+Image';
 }
 
-// Keep latest loaded items for optimistic UI updates
+// Keep latest loaded items for optimistic UI updates and instant render
 let currentItems = [];
+
+function getProductsFromCache(ids) {
+  const cache = window.__PRODUCTS_CACHE || {};
+  const info = {};
+  const missing = [];
+  ids.forEach(id => {
+    const p = cache[String(id)];
+    if (p) info[id] = { name: p.name || 'Product', image_urls: p.image_urls || '' };
+    else missing.push(id);
+  });
+  return { info, missing };
+}
+
+async function fetchMissingProducts(missingIds) {
+  if (!missingIds?.length) return {};
+  const { data } = await supabase
+    .from('products')
+    .select('id, name, image_urls')
+    .in('id', missingIds);
+  const m = {};
+  (data || []).forEach(p => { m[p.id] = { name: p.name || 'Product', image_urls: p.image_urls || '' }; });
+  // Warm global cache
+  try {
+    const cache = window.__PRODUCTS_CACHE || (window.__PRODUCTS_CACHE = {});
+    (data || []).forEach(p => { cache[String(p.id)] = { ...(cache[String(p.id)] || {}), ...p }; });
+  } catch {}
+  return m;
+}
+
+function readCachedCart() {
+  try {
+    const raw = sessionStorage.getItem('cart:last');
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+
+function writeCachedCart(items) {
+  try {
+    sessionStorage.setItem('cart:last', JSON.stringify({ items, ts: Date.now() }));
+  } catch {}
+}
 
 async function getCartItems() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     const local = JSON.parse(localStorage.getItem('cart') || '[]');
+    // Enrich guest items with image URLs from product cache when available
+    const ids = local.map(i => i.id);
+    const { info } = getProductsFromCache(ids);
     return local.map(it => ({
-      product_id: it.id, name: it.name, qty: it.qty, price: Number(it.price || 0), image_urls: ''
+      product_id: it.id,
+      name: it.name || info[it.id]?.name || 'Product',
+      qty: it.qty,
+      price: Number(it.price || 0),
+      image_urls: info[it.id]?.image_urls || ''
     }));
   }
   const cartId = await getActiveCartId();
@@ -27,12 +76,9 @@ async function getCartItems() {
   if (!items?.length) return [];
 
   const ids = items.map(i => i.product_id);
-  const { data: products } = await supabase
-    .from('products')
-    .select('id, name, image_urls')
-    .in('id', ids);
-
-  const pm = Object.fromEntries((products || []).map(p => [p.id, p]));
+  const { info, missing } = getProductsFromCache(ids);
+  const fetched = await fetchMissingProducts(missing);
+  const pm = { ...info, ...fetched };
   return items.map(i => ({
     product_id: i.product_id,
     name: pm[i.product_id]?.name || 'Product',
@@ -95,7 +141,19 @@ function setCartBadge(n) {
 }
 
 export async function loadCartPage() {
-  currentItems = await getCartItems();
+  // Instant render from cache (if present)
+  const cached = readCachedCart();
+  if (cached?.items) {
+    currentItems = cached.items;
+    render(currentItems);
+  } else {
+    // Show minimal empty state while fetching
+    render([]);
+  }
+  // Background refresh from source of truth
+  const fresh = await getCartItems();
+  currentItems = fresh;
+  writeCachedCart(fresh);
   render(currentItems);
   refreshCartBadge();
 }
@@ -106,6 +164,17 @@ export function initCartView() {
   if (btn && !btn.dataset.bound) {
     btn.dataset.bound = '1';
     btn.addEventListener('click', () => { location.hash = '#cart'; });
+    // Prefetch on hover/touch to make cart open instantly
+    const prefetch = async () => {
+      const last = Number(btn.dataset.prefetchedAt || 0);
+      const now = Date.now();
+      if (now - last < 8000) return; // throttle
+      btn.dataset.prefetchedAt = String(now);
+      const items = await getCartItems();
+      writeCachedCart(items);
+    };
+    btn.addEventListener('mouseenter', prefetch);
+    btn.addEventListener('touchstart', prefetch, { passive: true });
   }
 
   // Remove handler (delegated)
