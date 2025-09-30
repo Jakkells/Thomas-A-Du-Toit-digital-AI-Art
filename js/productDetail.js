@@ -2,16 +2,21 @@ import { supabase } from './supabaseClient.js';
 import { addToCart } from './cart.js';
 
 let pdState = { idx: 0, count: 0 };
+let currentLoadToken = 0;
 
 const ZAR = new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR' });
 
-function parseCsvImages(csv) {
-  return (csv || '').split(',').map(s => s.trim()).filter(Boolean);
+function parseCsvImages(csvOrArr) {
+  if (Array.isArray(csvOrArr)) {
+    return csvOrArr.filter(Boolean).map(s => (typeof s === 'string' ? s.trim() : s));
+  }
+  if (typeof csvOrArr === 'string') {
+    return csvOrArr.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  return [];
 }
 
-function isMobile() {
-  return window.matchMedia('(max-width: 900px)').matches;
-}
+function isMobile() { return window.matchMedia('(max-width: 900px)').matches; }
 
 function setMainImage(url) {
   const img = document.getElementById('pdMainImage');
@@ -19,95 +24,65 @@ function setMainImage(url) {
 }
 
 function updateArrows() {
+  // Always hide arrows in single-image mode
   const prev = document.getElementById('pdPrev');
   const next = document.getElementById('pdNext');
-  const show = isMobile() && pdState.count > 1;
-  if (prev) {
-    prev.style.display = show ? 'inline-flex' : 'none';
-    prev.disabled = pdState.idx <= 0;
+  if (prev) prev.style.display = 'none';
+  if (next) next.style.display = 'none';
+}
+
+function applyDetailVisibility(urls) {
+  const thumbs = document.getElementById('pdThumbs');
+  const main = document.getElementById('pdMainImage');
+  const carousel = document.getElementById('pdCarousel');
+  const prev = document.getElementById('pdPrev');
+  const next = document.getElementById('pdNext');
+  const count = Array.isArray(urls) ? urls.length : 0;
+  const single = count <= 1;
+  const mobile = isMobile();
+
+  if (single) {
+    if (thumbs) thumbs.style.display = 'none';
+    if (carousel) carousel.style.display = 'none';
+    if (main) main.style.display = 'block';
+    if (prev) prev.style.display = 'none';
+    if (next) next.style.display = 'none';
+    pdState.count = count;
+    pdState.idx = 0;
+    return;
   }
-  if (next) {
-    next.style.display = show ? 'inline-flex' : 'none';
-    next.disabled = pdState.idx >= pdState.count - 1;
+
+  if (mobile) {
+    if (thumbs) thumbs.style.display = 'none';
+    if (main) main.style.display = 'none';
+    if (carousel) carousel.style.display = 'flex';
+  } else {
+    if (thumbs) thumbs.style.display = '';
+    if (main) main.style.display = 'block';
+    if (carousel) carousel.style.display = 'none';
   }
 }
 
 function buildCarousel(urls) {
+  // No carousel in single-image design; ensure it is empty
   const wrap = document.getElementById('pdCarousel');
-  if (!wrap) return;
-  const list = urls?.length ? urls : ['https://via.placeholder.com/800x1000?text=No+Image'];
-  wrap.innerHTML = '';
-  list.forEach((u) => {
-    const slide = document.createElement('div');
-    slide.className = 'pd-slide';
-    const img = document.createElement('img');
-    img.src = u;
-    img.alt = 'Product image';
-    img.loading = 'lazy';
-    slide.appendChild(img);
-    wrap.appendChild(slide);
-  });
-
-  pdState.idx = 0;
-  pdState.count = list.length;
-  updateArrows();
-
-  if (!wrap.dataset.bound) {
-    wrap.dataset.bound = '1';
-    wrap.addEventListener('scroll', () => {
-      const i = Math.round(wrap.scrollLeft / wrap.clientWidth);
-      if (i !== pdState.idx) {
-        pdState.idx = Math.max(0, Math.min(pdState.count - 1, i));
-        updateArrows();
-      }
-    }, { passive: true });
-  }
+  if (wrap) wrap.innerHTML = '';
+  pdState.idx = 0; pdState.count = 0; updateArrows();
 }
 
-function goToSlide(index) {
-  const wrap = document.getElementById('pdCarousel');
-  if (!wrap) return;
-  const i = Math.max(0, Math.min(pdState.count - 1, index));
-  const slide = wrap.children[i];
-  if (slide) {
-    wrap.scrollTo({ left: slide.offsetLeft, behavior: 'smooth' });
-    pdState.idx = i;
-    updateArrows();
-  }
-}
+function goToSlide() { /* disabled in single-image design */ }
 
 function initArrowButtons() {
   const prev = document.getElementById('pdPrev');
   const next = document.getElementById('pdNext');
-  if (prev && !prev.dataset.bound) {
-    prev.dataset.bound = '1';
-    prev.addEventListener('click', () => goToSlide(pdState.idx - 1));
-  }
-  if (next && !next.dataset.bound) {
-    next.dataset.bound = '1';
-    next.addEventListener('click', () => goToSlide(pdState.idx + 1));
-  }
+  if (prev) prev.style.display = 'none';
+  if (next) next.style.display = 'none';
 }
 
-function renderThumbs(urls) {
+function renderThumbs() {
+  // No thumbs in single-image design; ensure container is empty
   const wrap = document.getElementById('pdThumbs');
-  if (!wrap) return;
-  wrap.innerHTML = '';
-  urls.forEach((u, idx) => {
-    const div = document.createElement('div');
-    div.className = 'pd-thumb' + (idx === 0 ? ' selected' : '');
-    const img = document.createElement('img');
-    img.src = u;
-    img.alt = 'Thumbnail';
-    div.appendChild(img);
-    div.addEventListener('click', () => {
-      document.querySelectorAll('.pd-thumb').forEach(t => t.classList.remove('selected'));
-      div.classList.add('selected');
-      setMainImage(u);
-      if (isMobile()) goToSlide(idx);
-    });
-    wrap.appendChild(div);
-  });
+  if (wrap) wrap.innerHTML = '';
 }
 
 function getHashParams() {
@@ -124,6 +99,8 @@ export async function loadProductDetailFromHash() {
   const nameEl = document.getElementById('pdName');
   const priceEl = document.getElementById('pdPrice');
   const thumbsEl = document.getElementById('pdThumbs');
+  const typeEl = document.getElementById('pdType');
+  const descEl = document.getElementById('pdDesc');
 
   if (!id) {
     if (nameEl) nameEl.textContent = 'Product';
@@ -135,11 +112,22 @@ export async function loadProductDetailFromHash() {
     return;
   }
 
+  // Reset UI while loading a new product
+  if (nameEl) nameEl.textContent = 'Loading…';
+  if (priceEl) priceEl.textContent = '';
+  if (typeEl) typeEl.textContent = '';
+  if (descEl) descEl.textContent = '';
+  setMainImage('');
+
+  const token = ++currentLoadToken;
   const { data: p, error } = await supabase
     .from('products')
-    .select('id, name, image_urls, price')
+    .select('id, name, description, item_type, image_urls, price')
     .eq('id', id)
     .maybeSingle();
+
+  // Ignore stale responses if another load started after this one
+  if (token !== currentLoadToken) return;
 
   if (error || !p) {
     if (nameEl) nameEl.textContent = 'Product not found';
@@ -152,14 +140,22 @@ export async function loadProductDetailFromHash() {
   }
 
   const urls = parseCsvImages(p.image_urls);
+  const section = document.getElementById('product');
+  if (section) section.classList.toggle('single-image', urls.length <= 1);
 
   if (nameEl) nameEl.textContent = p.name || 'Product';
   if (priceEl) priceEl.textContent = ZAR.format(Number(p.price || 0));
+  if (typeEl) typeEl.textContent = p.item_type || '';
+  if (descEl) descEl.textContent = p.description || '';
 
-  renderThumbs(urls.length ? urls : ['https://via.placeholder.com/800x1000?text=No+Image']);
+  // Thumbs only when more than one image
+  renderThumbs();
+  // Always set main image (fallback if none)
   setMainImage(urls[0] || 'https://via.placeholder.com/800x1000?text=No+Image');
-  buildCarousel(urls);
+  // Build carousel only when there is more than one image
+  buildCarousel([]);
   updateArrows();
+  applyDetailVisibility([urls[0]].filter(Boolean));
 
   const btn = document.getElementById('pdAddToCart');
   if (btn && !btn.dataset.bound) {
@@ -176,4 +172,8 @@ export async function loadProductDetailFromHash() {
 }
 
 // Keep arrows updated on resize/orientation
-window.addEventListener('resize', () => updateArrows());
+window.addEventListener('resize', () => {
+  updateArrows();
+  const main = document.getElementById('pdMainImage');
+  applyDetailVisibility(main?.src ? [main.src] : []);
+});

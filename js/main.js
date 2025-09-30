@@ -1,7 +1,7 @@
 import { supabase } from './supabaseClient.js';
 import { initAuth } from './auth.js';
 import { setAdminNav } from './nav.js';
-import { setMaintenanceAccess } from './maintenance.js';
+import { setMaintenanceAccess, initMaintenance } from './maintenance.js';
 import { initProducts } from './products.js';
 import { loadProductDetailFromHash } from './productDetail.js';
 import { initCartView, loadCartPage } from './cartView.js';
@@ -61,6 +61,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initAuth();
   initProducts();
   initCartView();
+  initMaintenance();
   initMobileMenu();
 
   route();
@@ -75,7 +76,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       .eq('id', user.id)
       .maybeSingle();
 
-    showUserUI(profile, user, supabase);
     isAdmin = (profile?.role || '').toLowerCase() === 'admin';
     setAdminNav(isAdmin);
 

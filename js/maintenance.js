@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient.js';
-import { loadProducts } from './products.js';
+import { loadProducts, productCard } from './products.js';
 
 function show(el) { if (el) el.style.display = 'block'; }
 function hide(el) { if (el) el.style.display = 'none'; }
@@ -8,6 +8,64 @@ const BUCKET = 'pictures';
 const FOLDER = 'product-pictures';
 
 let selectedFiles = [];
+
+// Get an access token to authenticate REST uploads (non-blocking)
+async function getAccessToken() {
+  // 1) Try localStorage first (fast path used by supabase-js)
+  try {
+    const key = Object.keys(localStorage).find(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
+    if (key) {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const token = parsed?.access_token || parsed?.currentSession?.access_token || parsed?.accessToken || null;
+        if (token) return token;
+      }
+    }
+  } catch {}
+
+  // 2) Fallback: try supabase.auth.getSession but with a short timeout to avoid hangs
+  try {
+    const sessionPromise = supabase.auth.getSession();
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('getSession timeout')), 3000));
+    const { data } = await Promise.race([sessionPromise, timeout]);
+    if (data?.session?.access_token) return data.session.access_token;
+  } catch {}
+  return null;
+}
+
+function buildPublicUrl(path) {
+  // Buckets marked Public can serve via this deterministic URL; avoid network call
+  // Use encodeURI to keep path slashes intact but escape spaces, etc.
+  return `${window.SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encodeURI(path)}`;
+}
+
+async function uploadFileDirect(file, path) {
+  const token = await getAccessToken();
+  if (!token) throw new Error('Not authenticated. Please log in again.');
+
+  const url = `${window.SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort('upload timeout'), 30000);
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'authorization': `Bearer ${token}`,
+      'apikey': window.SUPABASE_KEY,
+      'x-upsert': 'true',
+      'content-type': file.type || 'application/octet-stream'
+    },
+    body: file,
+    signal: controller.signal
+  });
+  clearTimeout(timeoutId);
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Upload failed (${res.status}): ${text || res.statusText}`);
+  }
+  return path;
+}
 
 function renderPreview() {
   const preview = document.getElementById('imagePreview');
@@ -34,8 +92,16 @@ function renderPreview() {
 }
 
 function acceptFiles(fileList) {
+  console.log('acceptFiles called with:', fileList);
   const files = Array.from(fileList || []).filter(f => f.type.startsWith('image/'));
+  console.log('Filtered image files:', files.map(f => ({
+    name: f.name,
+    size: f.size,
+    type: f.type,
+    isFile: f instanceof File
+  })));
   selectedFiles = selectedFiles.concat(files);
+  console.log('Total selected files:', selectedFiles.length);
   renderPreview();
 }
 
@@ -57,21 +123,48 @@ function setupDropzone() {
 }
 
 async function uploadImages(productId) {
+  console.log('uploadImages called with', selectedFiles.length, 'files');
   const urls = [];
+  
+  // If no files selected, return empty array
+  if (selectedFiles.length === 0) {
+    console.log('No files to upload');
+    return urls;
+  }
+  
   for (let i = 0; i < selectedFiles.length; i++) {
     const file = selectedFiles[i];
+    console.log(`Uploading file ${i + 1}/${selectedFiles.length}:`, file.name);
+    console.log('File object details:', {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      lastModified: file.lastModified,
+      isFile: file instanceof File,
+      isBlob: file instanceof Blob
+    });
+    
+    // Ensure we have a valid file
+    if (!file || !(file instanceof File)) {
+      throw new Error(`Invalid file object at index ${i}`);
+    }
+    
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
     const path = `${FOLDER}/${productId}/${Date.now()}-${i}.${ext}`;
+    console.log('Upload path:', path);
 
-    const { error: upErr } = await supabase.storage
-      .from(BUCKET)
-      .upload(path, file, { upsert: false, cacheControl: '3600', contentType: file.type });
-
-    if (upErr) throw upErr;
-
-    const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-    urls.push(data.publicUrl);
+    try {
+      console.log('Starting upload (direct REST)...');
+      await uploadFileDirect(file, path);
+      const publicUrl = buildPublicUrl(path);
+      console.log('Public URL:', publicUrl);
+      urls.push(publicUrl);
+    } catch (uploadError) {
+      console.error('Upload failed:', uploadError);
+      throw uploadError;
+    }
   }
+  console.log('All uploads complete:', urls);
   return urls;
 }
 
@@ -116,19 +209,117 @@ async function removeImagesForProduct(productId, image_urls_csv) {
   }
 }
 
+// Heuristics to detect FK conflicts from REST responses
+function isForeignKeyConflictStatus(status) {
+  return status === 409 || status === 23503; // PostgREST conflict or PG FK code
+}
+
+async function restDelete(path, timeoutMs = 5000) {
+  const token = await getAccessToken();
+  if (!token) throw new Error('Not authenticated.');
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort('delete timeout'), timeoutMs);
+  const res = await fetch(`${window.SUPABASE_URL}/rest/v1/${path}`, {
+    method: 'DELETE',
+    headers: {
+      'authorization': `Bearer ${token}`,
+      'apikey': window.SUPABASE_KEY,
+      'accept': 'application/json',
+      'prefer': 'return=minimal'
+    },
+    signal: controller.signal
+  });
+  clearTimeout(t);
+  return res;
+}
+
+async function restGet(path, timeoutMs = 5000) {
+  const token = await getAccessToken();
+  if (!token) throw new Error('Not authenticated.');
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort('get timeout'), timeoutMs);
+  const res = await fetch(`${window.SUPABASE_URL}/rest/v1/${path}`, {
+    method: 'GET',
+    headers: {
+      'authorization': `Bearer ${token}`,
+      'apikey': window.SUPABASE_KEY,
+      'accept': 'application/json'
+    },
+    signal: controller.signal
+  });
+  clearTimeout(t);
+  return res;
+}
+
+async function restPost(table, row, timeoutMs = 8000) {
+  const token = await getAccessToken();
+  if (!token) throw new Error('Not authenticated.');
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort('post timeout'), timeoutMs);
+  const res = await fetch(`${window.SUPABASE_URL}/rest/v1/${table}`, {
+    method: 'POST',
+    headers: {
+      'authorization': `Bearer ${token}`,
+      'apikey': window.SUPABASE_KEY,
+      'content-type': 'application/json',
+      'accept': 'application/json',
+      'prefer': 'return=representation'
+    },
+    body: JSON.stringify(row),
+    signal: controller.signal
+  });
+  clearTimeout(t);
+  return res;
+}
+
+// Try to delete any cart items that reference this product (REST)
+async function deleteCartItemsForProduct(productId) {
+  console.log('[delete] removing cart_items for product', productId);
+  const res = await restDelete(`cart_items?product_id=eq.${encodeURIComponent(productId)}`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    return { ok: false, error: new Error(`cart_items delete failed (${res.status}): ${text}`) };
+  }
+  return { ok: true };
+}
+
+// Delete a product and, if needed, its dependent cart_items. Remove images last (non-blocking)
 async function deleteProductById(id) {
-  // Fetch to know which images to remove
-  const { data: p } = await supabase
-    .from('products')
-    .select('id, image_urls')
-    .eq('id', id)
-    .maybeSingle();
+  console.log('[delete] start for product', id);
+  // Get product image_urls to clean up later. If this fails, proceed.
+  let imageCsv = '';
+  try {
+    const res = await restGet(`products?id=eq.${encodeURIComponent(id)}&select=id,image_urls`);
+    if (res.ok) {
+      const arr = await res.json();
+      if (Array.isArray(arr) && arr[0]?.image_urls) imageCsv = arr[0].image_urls || '';
+    } else {
+      console.warn('[delete] fetch product failed', res.status);
+    }
+  } catch (e) {
+    console.warn('[delete] fetch product error', e);
+  }
 
-  // Try remove images first (ignore failures, continue to DB delete)
-  try { await removeImagesForProduct(id, p?.image_urls || ''); } catch (e) { console.warn('Image delete warn:', e); }
+  // First direct delete
+  let res = await restDelete(`products?id=eq.${encodeURIComponent(id)}`);
+  if (!res.ok && isForeignKeyConflictStatus(res.status)) {
+    // Remove dependent cart_items then retry once
+    const cartDel = await deleteCartItemsForProduct(id);
+    if (!cartDel.ok) {
+      throw cartDel.error;
+    }
+    res = await restDelete(`products?id=eq.${encodeURIComponent(id)}`);
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`product delete failed (${res.status}): ${text}`);
+  }
 
-  const { error } = await supabase.from('products').delete().eq('id', id);
-  if (error) throw error;
+  console.log('[delete] product deleted, scheduling image cleanup');
+  // Fire-and-forget image cleanup so UI is not blocked
+  setTimeout(() => {
+    removeImagesForProduct(id, imageCsv).catch(e => console.warn('Image removal warning:', e));
+  }, 0);
 }
 
 export function initMaintenance() {
@@ -168,44 +359,125 @@ export function initMaintenance() {
     form.dataset.bound = '1';
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      console.log('Form submission started...');
+
+      // Skip connection test - proceed directly with form processing
+      console.log('Processing form submission...');
 
       const name = document.getElementById('prodName')?.value?.trim() || '';
-      const item_type = document.getElementById('prodType')?.value?.trim() || '';
+  const item_type = document.getElementById('prodType')?.value?.trim() || '';
+  const description = document.getElementById('prodDesc')?.value?.trim() || '';
       const stock = parseInt(document.getElementById('prodStock')?.value || '0', 10);
       const price = parseFloat(document.getElementById('prodPrice')?.value || '0');
 
-      if (!name || !item_type) { alert('Please fill in name and type.'); return; }
-      if (Number.isNaN(stock) || stock < 0) { alert('Stock must be 0 or more.'); return; }
-      if (Number.isNaN(price) || price < 0) { alert('Price must be 0 or more.'); return; }
+  console.log('Form values:', { name, item_type, description, stock, price });
+
+      if (!name || !item_type) { 
+        console.log('Validation failed: name or type missing');
+        alert('Please fill in name and type.'); 
+        return; 
+      }
+      if (Number.isNaN(stock) || stock < 0) { 
+        console.log('Validation failed: invalid stock');
+        alert('Stock must be 0 or more.'); 
+        return; 
+      }
+      if (Number.isNaN(price) || price < 0) { 
+        console.log('Validation failed: invalid price');
+        alert('Price must be 0 or more.'); 
+        return; 
+      }
+
+      // Disable the submit button to prevent double submissions
+      const submitBtn = form.querySelector('button[type="submit"]');
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Saving...';
+      }
 
       try {
         const productId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        console.log('Generated product ID:', productId);
 
         // Upload images first (if any)
-        const imgUrls = await uploadImages(productId);
+        console.log('Uploading images...', selectedFiles.length, 'files');
+        let imgUrls = [];
+        
+        if (selectedFiles.length > 0) {
+          try {
+            console.log('Starting image upload process...');
+            imgUrls = await uploadImages(productId);
+            console.log('All images uploaded successfully:', imgUrls);
+          } catch (uploadError) {
+            console.error('Image upload failed:', uploadError);
+            const continueWithoutImages = confirm(`Image upload failed: ${uploadError.message}\n\nContinue saving product without images?`);
+            if (!continueWithoutImages) {
+              throw uploadError;
+            }
+            console.log('User chose to continue without images...');
+            imgUrls = [];
+          }
+        } else {
+          console.log('No images selected - proceeding without images');
+        }
+        
         const image_urls = imgUrls.join(', ');
         const hidden = document.getElementById('prodImageUrls');
         if (hidden) hidden.value = image_urls;
 
-        const { error } = await supabase.from('products').insert([{
+        console.log('Skipping auth check for now...');
+
+        console.log('Inserting product into database...');
+        const productData = {
           id: productId,
           name,
           item_type,
+          description,
           image_urls,
           stock,
           price
-        }]);
-        if (error) throw error;
+        };
+        console.log('Product data:', productData);
 
+        // Use direct REST API call with authentication
+        console.log('Inserting via REST (PostgREST) with timeout...');
+        const res = await restPost('products', productData);
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(`Insert failed (${res.status}): ${text}`);
+        }
+        const createdArr = await res.json().catch(() => null);
+        const created = Array.isArray(createdArr) ? createdArr[0] : createdArr || productData;
+        console.log('Insert successful!', created);
+        console.log('Product added successfully');
         alert('Product added.');
         form.reset();
         selectedFiles = [];
         renderPreview();
         hide(modal);
+
+        // Optimistically render in both grids for instant feedback
+        const grids = [
+          document.getElementById('productsGrid'),
+          document.getElementById('productsGridMaintenance')
+        ].filter(Boolean);
+        grids.forEach(grid => {
+          const deletable = grid.id === 'productsGridMaintenance';
+          const card = productCard(created, { deletable });
+          grid.insertBefore(card, grid.firstChild);
+        });
+
+        // Reconcile with server state in background
         loadProducts(); // refresh both grids
       } catch (err) {
         console.error('Add product failed:', err);
         alert('Failed to add product: ' + (err?.message || err));
+      } finally {
+        // Re-enable the submit button
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Save Product';
+        }
       }
     });
   }

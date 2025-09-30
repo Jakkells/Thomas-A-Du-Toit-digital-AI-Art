@@ -52,7 +52,11 @@
     <section id="about">
       <div class="about-content">
         <h2>About</h2>
-        <p>This is a test blurb for the About section.</p>
+        <p>A digital artist exploring the dynamic intersection of technology and creativity. 
+          Through innovative use of digital tools and techniques, 
+          Thomas crafts immersive experiences that challenge perceptions and inspire new perspectives. 
+          His work reflects a passion for pushing boundaries and exploring the limitless possibilities 
+          of digital art.</p>
       </div>
     </section>
 
@@ -83,6 +87,11 @@
             <input type="text" id="prodType" required />
           </div>
 
+          <div class="form-group">
+            <label for="prodDesc">Description</label>
+            <textarea id="prodDesc" rows="4" placeholder="Write a short description..."></textarea>
+          </div>
+
           <!-- Dropzone -->
           <div class="form-group">
             <label>Images</label>
@@ -110,6 +119,7 @@
 
     <!-- Product Detail Section -->
     <section id="product" class="product-detail-section">
+      <a href="#shop" class="pd-back" aria-label="Back to shop">← Back</a>
       <div class="pd-layout">
         <aside id="pdThumbs" class="pd-thumbs"></aside>
         <div class="pd-image">
@@ -124,15 +134,13 @@
           <button id="pdNext" class="pd-arrow pd-next" aria-label="Next image">›</button>
         </div>
         <aside class="pd-info">
-          <!-- Head row: name + actions -->
-          <div class="pd-head">
-            <h1 id="pdName" class="pd-name">Product</h1>
-            <div class="pd-actions">
-              <button id="pdAddToCart" class="btn btn-solid">Add to cart</button>
-            </div>
+          <h1 id="pdName" class="pd-name">Product</h1>
+          <div id="pdDesc" class="pd-desc"></div>
+          <div id="pdType" class="pd-type"></div>
+          <div class="pd-buy">
+            <button id="pdAddToCart" class="btn btn-solid pd-buy-btn">Add to cart</button>
+            <div id="pdPrice" class="pd-price"></div>
           </div>
-
-          <div id="pdPrice" class="pd-price"></div>
         </aside>
       </div>
     </section>

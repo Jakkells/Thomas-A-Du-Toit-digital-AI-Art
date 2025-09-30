@@ -9,7 +9,7 @@ function firstImage(urls) {
     .filter(Boolean)[0] || 'https://via.placeholder.com/600x600?text=No+Image';
 }
 
-function productCard(p, { deletable = false } = {}) {
+export function productCard(p, { deletable = false } = {}) {
   const img = firstImage(p.image_urls);
   const out = (p.stock ?? 0) <= 0;
   const a = document.createElement('a');
@@ -42,7 +42,7 @@ export async function loadProducts() {
 
   const { data, error } = await supabase
     .from('products')
-    .select('id, name, item_type, image_urls, stock, price, created_at')
+    .select('id, name, item_type, description, image_urls, stock, price, created_at')
     .order('created_at', { ascending: false });
 
   grids.forEach(grid => {
@@ -63,4 +63,28 @@ export async function loadProducts() {
 
 export function initProducts() {
   loadProducts();
+
+  // Ensure product clicks always navigate with correct hash
+  const bindClick = (grid) => {
+    if (!grid || grid.dataset.clickBound) return;
+    grid.dataset.clickBound = '1';
+    grid.addEventListener('click', (e) => {
+      const a = e.target.closest && e.target.closest('a.product-card');
+      if (!a || !grid.contains(a)) return;
+      const href = a.getAttribute('href');
+      if (href && href.startsWith('#product?id=')) {
+        e.preventDefault();
+        if (location.hash !== href) {
+          location.hash = href;
+        } else {
+          // Force re-navigation if the same hash is clicked again
+          location.hash = '#shop';
+          setTimeout(() => { location.hash = href; }, 0);
+        }
+      }
+    });
+  };
+
+  bindClick(document.getElementById('productsGrid'));
+  bindClick(document.getElementById('productsGridMaintenance'));
 }
