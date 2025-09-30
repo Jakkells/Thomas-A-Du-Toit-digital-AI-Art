@@ -3,8 +3,12 @@ import { showGlobalMsg } from './utils/dom.js';
 
 async function ensureConfig() {
 	if (window.SUPABASE_URL && window.SUPABASE_KEY) return;
-	const res = await fetch('/api/config').catch((e) => ({ ok: false, status: 0, error: e }));
-	if (!res.ok) {
+		// Try friendly path first (works with vercel.json rewrite), then fallback
+		let res = await fetch('/config', { cache: 'no-store' }).catch((e) => ({ ok: false, status: 0, error: e }));
+		if (!res.ok) {
+			res = await fetch('/api/config', { cache: 'no-store' }).catch((e) => ({ ok: false, status: 0, error: e }));
+		}
+		if (!res.ok) {
 		// Helpful guidance for local static servers (Live Server etc.)
 		const isLocal = location.hostname === '127.0.0.1' || location.hostname === 'localhost' || location.protocol === 'file:';
 		if (res.status === 404 && isLocal) {
