@@ -226,6 +226,12 @@ button, .btn, input, select, textarea { min-height: 44px; }
   overflow: hidden;               /* inner body scrolls */
 }
 
+/* Tweak spacing for the Add Category modal for a cleaner look */
+#categoryModal .modal-content { padding: 16px; }
+#categoryModal h2 { margin: 4px 0 8px; }
+#categoryModal .form-group { margin-top: 6px; }
+#categoryModal .modal-footer { margin-top: 6px; }
+
 .modal-close {
     position: absolute;
     top: 8px;

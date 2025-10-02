@@ -76,6 +76,28 @@
 
   <main class="main-content">
     <section id="shop">
+      <div class="products-toolbar" style="display:flex;gap:12px;align-items:center;justify-content:flex-end;margin:8px 0 12px;flex-wrap:wrap;">
+        <div class="toolbar-group" style="display:flex;align-items:center;gap:6px;">
+          <label for="filterCategory" style="font-size:.9em;">Category</label>
+          <select id="filterCategory" style="padding:6px 8px; min-width:160px;">
+            <option value="">All</option>
+          </select>
+        </div>
+        <div class="toolbar-group" style="display:flex;align-items:center;gap:6px;">
+          <label for="filterType" style="font-size:.9em;">Type</label>
+          <select id="filterType" style="padding:6px 8px; min-width:160px;">
+            <option value="">All</option>
+          </select>
+        </div>
+        <div class="toolbar-group" style="display:flex;align-items:center;gap:6px;">
+          <label for="sortPrice" style="font-size:.9em;">Sort</label>
+          <select id="sortPrice" style="padding:6px 8px; min-width:160px;">
+            <option value="">Default</option>
+            <option value="price.asc">Price: Low to High</option>
+            <option value="price.desc">Price: High to Low</option>
+          </select>
+        </div>
+      </div>
       <div id="productsGrid" class="products-grid"></div>
     </section>
 
@@ -118,8 +140,18 @@
           </div>
 
           <div class="form-group">
+            <label for="prodCategory">Category</label>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <select id="prodCategory" style="flex:1; min-width: 0;" required>
+                <option value="" disabled selected hidden></option>
+              </select>
+              <button type="button" id="addCategoryBtn" class="btn" title="Add category" aria-label="Add category" style="width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #000;background:#000;color:#fff;border-radius:8px;font-weight:800;font-size:22px;">+</button>
+            </div>
+          </div>
+
+          <div class="form-group">
             <label for="prodDesc">Description</label>
-            <textarea id="prodDesc" rows="4" placeholder="Write a short description..."></textarea>
+            <textarea id="prodDesc" rows="4" placeholder="Write a short description..." required></textarea>
           </div>
 
           <!-- Dropzone -->
@@ -210,6 +242,24 @@
         <p class="form-hint" style="margin-top:8px;font-size:.9em;">
           <a href="#" id="forgotPasswordLink">Forgot your password?</a>
         </p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add Category Modal -->
+  <div id="categoryModal" class="modal">
+    <div class="modal-content">
+      <button id="closeCategoryModal" class="modal-close" aria-label="Close">×</button>
+      <h2>Add Category</h2>
+      <form id="categoryForm">
+        <div class="form-group">
+          <label for="newCategory">Category name</label>
+          <input type="text" id="newCategory" placeholder="e.g., Landscapes" required />
+        </div>
+        <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;">
+          <button type="button" id="cancelCategory" class="btn" style="border:1px solid #ccc;background:#fff;color:#333;border-radius:8px;padding:8px 12px;">Cancel</button>
+          <button type="submit" class="btn btn-solid" style="background:#000;color:#fff;border-radius:8px;padding:8px 12px;">Add</button>
+        </div>
       </form>
     </div>
   </div>

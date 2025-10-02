@@ -3,6 +3,14 @@ import { showGlobalMsg } from './utils/dom.js';
 
 const ZAR = new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR' });
 
+// Local state for filtering/sorting on the Shop grid
+const state = {
+  lastProducts: [], // raw data loaded from server
+  category: '',     // selected category filter (category)
+  type: '',         // selected type filter (item_type)
+  sort: ''          // '', 'price.asc', 'price.desc'
+};
+
 function firstImage(urls) {
   return (urls || '')
     .split(',')
@@ -22,11 +30,98 @@ function cacheProducts(list) {
         name: p.name,
         description: p.description,
         item_type: p.item_type,
+        category: p.category,
         image_urls: p.image_urls,
         price: p.price
       };
     });
   } catch {}
+}
+
+// Populate category dropdown from the latest products
+function populateCategories(list) {
+  try {
+    const sel = document.getElementById('filterCategory');
+    if (!sel) return;
+    const seen = new Set();
+    const types = [];
+    (list || []).forEach(p => {
+      const t = (p.category || '').trim();
+      if (!t || seen.has(t)) return;
+      seen.add(t);
+      types.push(t);
+    });
+    const cur = sel.value; // try keep the current selection
+    // Reset options
+    sel.innerHTML = '<option value="">All</option>' + types.map(t => `<option value="${t.replace(/"/g,'&quot;')}">${t}</option>`).join('');
+    if ([...sel.options].some(o => o.value === cur)) sel.value = cur; else sel.value = '';
+  } catch {}
+}
+
+// Populate type dropdown from the latest products
+function populateTypes(list) {
+  try {
+    const sel = document.getElementById('filterType');
+    if (!sel) return;
+    const seen = new Set();
+    const types = [];
+    (list || []).forEach(p => {
+      const t = (p.item_type || '').trim();
+      if (!t || seen.has(t)) return;
+      seen.add(t);
+      types.push(t);
+    });
+    const cur = sel.value; // try keep the current selection
+    sel.innerHTML = '<option value="">All</option>' + types.map(t => `<option value="${t.replace(/"/g,'&quot;')}">${t}</option>`).join('');
+    if ([...sel.options].some(o => o.value === cur)) sel.value = cur; else sel.value = '';
+  } catch {}
+}
+
+function applyFilterSortAndRender() {
+  const grid = document.getElementById('productsGrid');
+  if (!grid) return;
+  const deletable = false;
+  // Filter by category
+  let items = state.lastProducts.slice();
+  if (state.category) {
+    const cat = state.category.toLowerCase();
+    items = items.filter(p => String(p.category || '').toLowerCase() === cat);
+  }
+  // Filter by item type
+  if (state.type) {
+    const tp = state.type.toLowerCase();
+    items = items.filter(p => String(p.item_type || '').toLowerCase() === tp);
+  }
+  // Sort by price when requested
+  if (state.sort === 'price.asc' || state.sort === 'price.desc') {
+    const dir = state.sort.endsWith('desc') ? -1 : 1;
+    items.sort((a, b) => (Number(a.price || 0) - Number(b.price || 0)) * dir);
+  }
+  // Render
+  if (items.length === 0) {
+    grid.innerHTML = '<p style="padding: 12px; color: #666;">No products match your filter.</p>';
+    return;
+  }
+  grid.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  items.forEach(p => frag.appendChild(productCard(p, { deletable })));
+  grid.appendChild(frag);
+
+  // Bind prefetch on the newly rendered cards
+  grid.querySelectorAll('a.product-card').forEach(a => {
+    if (a.dataset.prefetchBound) return;
+    a.dataset.prefetchBound = '1';
+    const doPrefetch = () => {
+      const href = a.getAttribute('href') || '';
+      const id = (href.split('id=')[1] || '').split('&')[0];
+      const p = (window.__PRODUCTS_CACHE || {})[String(id)];
+      const img = p ? firstImage(p.image_urls) : null;
+      if (img) preloadImage(img);
+    };
+    a.addEventListener('mouseenter', doPrefetch);
+    a.addEventListener('touchstart', doPrefetch, { passive: true });
+    a.addEventListener('click', doPrefetch);
+  });
 }
 
 function preloadImage(src) {
@@ -78,16 +173,34 @@ export async function loadProducts() {
     g.innerHTML = '<div class="grid-loading">Loading products…</div>';
   });
 
+  // Safety net: if something stalls (e.g., auth.getSession hanging), replace loader with a retry after 9s
+  const safetyTimer = setTimeout(() => {
+    try {
+      document.querySelectorAll('#productsGrid, #productsGridMaintenance').forEach(grid => {
+        if (grid && /Loading products/i.test(grid.textContent || '')) {
+          grid.innerHTML = '<div style="grid-column:1/-1; padding:12px; text-align:center; color:#666;">Still loading… <button class="btn" style="margin-left:8px;border:1px solid #000;padding:6px 10px;" onclick="window.__retryLoadProducts && window.__retryLoadProducts()">Try again</button></div>';
+        }
+      });
+    } catch {}
+  }, 9000);
+
   // REST-first fetch with timeout so UI doesn't hang forever on network stalls
   console.log('[products] loadProducts: REST fetch start');
   let data, error, httpStatus = 0, httpDetail = '';
   async function restFetch(orderClause) {
-    const fields = 'id,name,item_type,description,image_urls,stock,price,created_at';
+    const fields = 'id,name,item_type,category,description,image_urls,stock,price,created_at';
     const base = `${window.SUPABASE_URL}/rest/v1/products?select=${encodeURIComponent(fields)}`;
     const url = orderClause ? `${base}&order=${encodeURIComponent(orderClause)}` : base;
     const headers = { 'apikey': window.SUPABASE_KEY, 'accept': 'application/json' };
     try {
-      const { data: s } = await supabase.auth.getSession();
+      // Avoid indefinite waits if supabase.auth.getSession() stalls; proceed without token on timeout
+      const getSess = supabase.auth.getSession();
+      const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('getSession-timeout')), 1500));
+      let s;
+      try {
+        const r = await Promise.race([getSess, timeout]);
+        s = r?.data;
+      } catch {}
       const tok = s?.session?.access_token;
       if (tok) headers['authorization'] = `Bearer ${tok}`;
     } catch {}
@@ -132,6 +245,15 @@ export async function loadProducts() {
   if (Array.isArray(data)) cacheProducts(data);
 
   grids.forEach(grid => {
+    // Keep a copy for the Shop page tooling
+    if (grid.id === 'productsGrid' && Array.isArray(data)) {
+      state.lastProducts = data.slice();
+      // Update categories dropdown when data changes
+      populateCategories(state.lastProducts);
+      populateTypes(state.lastProducts);
+    }
+    // Any outcome means we can clear the safety timer
+    try { clearTimeout(safetyTimer); } catch {}
     // Clear loading state before rendering result
     if (error) {
         console.error('Failed to load products:', error?.message || error, { status: httpStatus, detail: httpDetail });
@@ -161,28 +283,34 @@ export async function loadProducts() {
       grid.innerHTML = '<p style="padding: 12px; color: #666;">No products yet.</p>';
       return;
   }
-  // Success: render cards
-  grid.innerHTML = '';
-  const frag = document.createDocumentFragment();
-  const deletable = grid.id === 'productsGridMaintenance';
-  data.forEach(p => frag.appendChild(productCard(p, { deletable })));
-  grid.appendChild(frag);
+  // Success: render
+  if (grid.id === 'productsGrid') {
+      // Shop grid: apply current filter/sort
+      applyFilterSortAndRender();
+    } else {
+      // Maintenance grid: render all without filtering
+      grid.innerHTML = '';
+      const frag = document.createDocumentFragment();
+      const deletable = true;
+      data.forEach(p => frag.appendChild(productCard(p, { deletable })));
+      grid.appendChild(frag);
 
-    // Prefetch first image and ensure cache is warm on hover/touch
-    grid.querySelectorAll('a.product-card').forEach(a => {
-      if (a.dataset.prefetchBound) return;
-      a.dataset.prefetchBound = '1';
-      const doPrefetch = () => {
-        const href = a.getAttribute('href') || '';
-        const id = (href.split('id=')[1] || '').split('&')[0];
-        const p = (window.__PRODUCTS_CACHE || {})[String(id)];
-        const img = p ? firstImage(p.image_urls) : null;
-        if (img) preloadImage(img);
-      };
-      a.addEventListener('mouseenter', doPrefetch);
-      a.addEventListener('touchstart', doPrefetch, { passive: true });
-      a.addEventListener('click', doPrefetch);
-    });
+      // Prefetch first image and ensure cache is warm on hover/touch
+      grid.querySelectorAll('a.product-card').forEach(a => {
+        if (a.dataset.prefetchBound) return;
+        a.dataset.prefetchBound = '1';
+        const doPrefetch = () => {
+          const href = a.getAttribute('href') || '';
+          const id = (href.split('id=')[1] || '').split('&')[0];
+          const p = (window.__PRODUCTS_CACHE || {})[String(id)];
+          const img = p ? firstImage(p.image_urls) : null;
+          if (img) preloadImage(img);
+        };
+        a.addEventListener('mouseenter', doPrefetch);
+        a.addEventListener('touchstart', doPrefetch, { passive: true });
+        a.addEventListener('click', doPrefetch);
+      });
+    }
   });
 }
 
@@ -218,4 +346,32 @@ export function initProducts() {
 
   bindClick(document.getElementById('productsGrid'));
   bindClick(document.getElementById('productsGridMaintenance'));
+
+  // Bind filter/sort controls (Shop only)
+  try {
+    const catSel = document.getElementById('filterCategory');
+    const typeSel = document.getElementById('filterType');
+    const sortSel = document.getElementById('sortPrice');
+    if (catSel && !catSel.dataset.bound) {
+      catSel.dataset.bound = '1';
+      catSel.addEventListener('change', () => {
+        state.category = catSel.value || '';
+        applyFilterSortAndRender();
+      });
+    }
+    if (typeSel && !typeSel.dataset.bound) {
+      typeSel.dataset.bound = '1';
+      typeSel.addEventListener('change', () => {
+        state.type = typeSel.value || '';
+        applyFilterSortAndRender();
+      });
+    }
+    if (sortSel && !sortSel.dataset.bound) {
+      sortSel.dataset.bound = '1';
+      sortSel.addEventListener('change', () => {
+        state.sort = sortSel.value || '';
+        applyFilterSortAndRender();
+      });
+    }
+  } catch {}
 }

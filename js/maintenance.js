@@ -395,8 +395,111 @@ export function initMaintenance() {
   const modal = document.getElementById('productModal');
   const closeBtn = document.getElementById('closeProductModal');
   const form = document.getElementById('productForm');
+  const catSel = document.getElementById('prodCategory');
+  const catAddBtn = document.getElementById('addCategoryBtn');
+  const catModal = document.getElementById('categoryModal');
+  const catForm = document.getElementById('categoryForm');
+  const catInput = document.getElementById('newCategory');
+  const catClose = document.getElementById('closeCategoryModal');
+  const catCancel = document.getElementById('cancelCategory');
 
   setupDropzone();
+
+  // Populate category dropdown from cached products when opening modal
+  async function populateCategoryOptions() {
+    try {
+      if (!catSel) return;
+      // Try server categories first
+      const fetchCategories = async () => {
+        try {
+          const res = await restGet('categories?select=name&order=name.asc', 5000);
+          if (!res.ok) return null;
+          const arr = await res.json().catch(() => []);
+          const names = Array.isArray(arr) ? arr.map(r => (r?.name || '').trim()).filter(Boolean) : [];
+          return Array.from(new Set(names));
+        } catch { return null; }
+      };
+
+      let cats = await fetchCategories();
+      if (!cats) {
+        // Fallback to cache-derived categories
+        const cache = window.__PRODUCTS_CACHE || {};
+        const seen = new Set();
+        cats = [];
+        Object.values(cache).forEach(p => {
+          const c = (p.category || '').trim();
+          if (!c || seen.has(c)) return; seen.add(c); cats.push(c);
+        });
+        cats.sort((a,b) => a.localeCompare(b));
+      }
+      const keep = catSel.value;
+      catSel.innerHTML = '<option value="" disabled hidden></option>' + (cats || []).map(c => `<option value="${c.replace(/\"/g,'&quot;')}">${c}</option>`).join('');
+      if ([...catSel.options].some(o => o.value === keep)) catSel.value = keep;
+    } catch {}
+  }
+  // Update categories when modal opens
+  if (fab && !fab.dataset.bound) {
+    fab.dataset.bound = '1';
+    fab.addEventListener('click', () => { populateCategoryOptions(); show(modal); });
+  }
+  // Add Category modal interactions
+  if (catAddBtn && !catAddBtn.dataset.bound) {
+    catAddBtn.dataset.bound = '1';
+    catAddBtn.addEventListener('click', () => {
+      try { if (catInput) catInput.value = ''; } catch {}
+      if (catModal) catModal.style.display = 'block';
+      document.body.classList.add('no-scroll');
+      setTimeout(() => { try { catInput?.focus(); } catch {} }, 50);
+    });
+  }
+  const hideCatModal = () => {
+    if (catModal) catModal.style.display = 'none';
+    document.body.classList.remove('no-scroll');
+  };
+  if (catClose && !catClose.dataset.bound) {
+    catClose.dataset.bound = '1';
+    catClose.addEventListener('click', hideCatModal);
+  }
+  if (catCancel && !catCancel.dataset.bound) {
+    catCancel.dataset.bound = '1';
+    catCancel.addEventListener('click', hideCatModal);
+  }
+  if (catModal && !catModal.dataset.boundBackdrop) {
+    catModal.dataset.boundBackdrop = '1';
+    catModal.addEventListener('click', (e) => { if (e.target === catModal) hideCatModal(); });
+  }
+  if (catForm && !catForm.dataset.bound) {
+    catForm.dataset.bound = '1';
+    catForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const v = (catInput?.value || '').trim();
+      if (!v) { try { catInput?.focus(); } catch {}; return; }
+      (async () => {
+        // Try persisting to categories table; ignore conflicts (already exists)
+        try {
+          const res = await restPost('categories', { name: v }, 5000);
+          if (!res.ok) {
+            const txt = await res.text().catch(() => '');
+            // 409 conflict = duplicate; proceed to add locally
+            if (res.status !== 409) {
+              console.warn('Add category failed:', res.status, txt);
+            }
+          }
+        } catch (err) {
+          console.warn('Add category request failed:', err?.message || err);
+        }
+        // Ensure it appears in the dropdown now
+        const exists = [...catSel.options].some(o => o.value.toLowerCase() === v.toLowerCase());
+        if (!exists) {
+          const opt = document.createElement('option');
+          opt.value = v; opt.textContent = v;
+          catSel.appendChild(opt);
+        }
+        catSel.value = v;
+        hideCatModal();
+      })();
+    });
+  }
 
   if (fab) fab.addEventListener('click', () => show(modal));
   if (closeBtn) closeBtn.addEventListener('click', () => hide(modal));
@@ -465,8 +568,9 @@ export function initMaintenance() {
       const name = document.getElementById('prodName')?.value?.trim() || '';
   const item_type = document.getElementById('prodType')?.value?.trim() || '';
   const description = document.getElementById('prodDesc')?.value?.trim() || '';
-      const stock = parseInt(document.getElementById('prodStock')?.value || '0', 10);
+  const stock = parseInt(document.getElementById('prodStock')?.value || '0', 10);
       const price = parseFloat(document.getElementById('prodPrice')?.value || '0');
+  const category = document.getElementById('prodCategory')?.value?.trim() || '';
 
   console.log('Form values:', { name, item_type, description, stock, price });
 
@@ -530,6 +634,7 @@ export function initMaintenance() {
           id: productId,
           name,
           item_type,
+          category,
           description,
           image_urls,
           stock,
