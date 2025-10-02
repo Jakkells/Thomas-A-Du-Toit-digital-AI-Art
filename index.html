@@ -23,6 +23,21 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <script>
+    // Capture recovery intent ASAP (before Supabase JS removes URL hash)
+    (function () {
+      try {
+        var h = window.location.hash || '';
+        if (!h) return;
+        var q = h.charAt(0) === '#' ? h.slice(1) : h;
+        var hasRecovery = /(^|&)type=recovery(&|$)/i.test(q) || /recovery/i.test(q);
+        if (hasRecovery) sessionStorage.setItem('sb:recovery', '1');
+        // Also capture email confirmation intent so we can show a helpful popup after redirect
+        var hasConfirm = /(^|&)type=signup(&|$)/i.test(q) || /confirm|confirmed|verification/i.test(q);
+        if (hasConfirm) sessionStorage.setItem('sb:confirmed', '1');
+      } catch (e) { /* noop */ }
+    })();
+  </script>
   <div id="globalMsg" style="display:none;color:red;text-align:center;margin:16px 0;font-size:1em;"></div>
 
   <header class="header">
@@ -51,9 +66,9 @@
 
         <!-- Change both to outline-light -->
         <div id="authControls" class="auth-buttons">
-          <button class="btn btn-outline-light" id="loginBtn">Login</button>
-          <button class="btn btn-outline-light" id="signupBtn">Sign Up</button>
-          <button id="logoutBtn" class="btn btn-outline-light">Logout</button>
+          <button class="btn btn-outline-light" id="loginBtn" type="button">Login</button>
+          <button class="btn btn-outline-light" id="signupBtn" type="button">Sign Up</button>
+          <button id="logoutBtn" class="btn btn-outline-light" type="button">Logout</button>
         </div>
       </div>
     </div>
@@ -192,9 +207,8 @@
           </div>
         </div>
         <button type="submit" class="btn btn-solid" style="width:100%;">Login</button>
-        <p style="margin-top:8px;font-size:.9em;">
-          Don’t have an account?
-          <a href="#" id="switchToSignup">Sign up</a>
+        <p class="form-hint" style="margin-top:8px;font-size:.9em;">
+          <a href="#" id="forgotPasswordLink">Forgot your password?</a>
         </p>
       </form>
     </div>
@@ -244,6 +258,28 @@
 
       <div class="modal-footer">
         <button id="signupSubmit" class="btn btn-solid">Sign Up</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reset Password Modal (opened after clicking email link) -->
+  <div id="resetModal" class="modal">
+    <div class="modal-content">
+      <button id="closeReset" class="modal-close" aria-label="Close">×</button>
+      <h2>Reset Password</h2>
+      <div class="modal-body">
+        <form id="resetForm">
+          <div class="form-group">
+            <label for="resetNewPassword">New Password</label>
+            <div class="password-wrap">
+              <input type="password" id="resetNewPassword" required />
+              <button type="button" id="showResetPassword" class="show-password-btn">Show</button>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button id="resetSubmit" type="submit" form="resetForm" class="btn btn-solid">Update Password</button>
       </div>
     </div>
   </div>

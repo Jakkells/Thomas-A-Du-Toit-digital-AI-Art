@@ -9,7 +9,12 @@ let _cachedUserId = undefined;
 let _cachedCartId = undefined;
 
 async function getUserId() {
-  if (_cachedUserId) return _cachedUserId;
+  if (_cachedUserId !== undefined) return _cachedUserId;
+  try {
+    const { data: s } = await supabase.auth.getSession();
+    const id = s?.session?.user?.id;
+    if (id) { _cachedUserId = id; return id; }
+  } catch {}
   const { data: { user } } = await supabase.auth.getUser();
   _cachedUserId = user?.id || null;
   return _cachedUserId;
@@ -49,6 +54,8 @@ export async function addToCart(product, qty = 1) {
   }
   // Authenticated -> DB upsert (qty +=)
   const cartId = await getActiveCartId();
+  // Optimistic badge update: emit change early in case network is slow
+  try { emitCartChanged(); } catch {}
   const { data: existing } = await supabase
     .from('cart_items')
     .select('qty').eq('cart_id', cartId).eq('product_id', product.id).maybeSingle();

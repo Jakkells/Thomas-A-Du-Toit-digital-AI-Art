@@ -1,3 +1,0 @@
--Add payment method
-
--Add the email to the client with the picture if payment was confirmed

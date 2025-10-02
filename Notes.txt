@@ -1,0 +1,24 @@
+-category for products
+
+-Add payment method
+
+-Add the email to the client with the picture if payment was confirmed
+
+
+
+
+TESTING
+------------------------------------------------
+Login with an account
+Login wihtout an account
+log out
+Sign up with an account
+Sign up without an account
+Forgot password
+Adding products
+Deleting product
+Adding products to cart
+removing products from cart
+
+Tests same for mobile
+--------------------------------------------------

@@ -24,8 +24,12 @@ function route() {
 
   // Guard: non-admins cannot view maintenance
   if (section === 'maintenance' && !isAdmin) {
-    location.hash = '#shop';
-    return;
+    // If admin status not known yet (startup), delay redirect; otherwise redirect
+    const adminKnown = typeof isAdmin === 'boolean';
+    if (adminKnown && !isAdmin) {
+      location.hash = '#shop';
+      return;
+    }
   }
 
   showSection(section);
@@ -83,7 +87,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   window.addEventListener('unhandledrejection', (e) => {
     console.error('Unhandled promise rejection:', e.reason);
-    showGlobalMsg('A network or app error occurred. Please try again.');
+    // Avoid alarming users with a global banner for transient API errors.
+    // Specific flows should surface their own inline/toast errors.
   });
 
   initAuth();

@@ -29,4 +29,11 @@ try {
 	showGlobalMsg((err && err.message) ? err.message : 'App configuration failed to load. Please try again later.');
 	throw err;
 }
-export const supabase = createClient(window.SUPABASE_URL, window.SUPABASE_KEY);
+export const supabase = createClient(window.SUPABASE_URL, window.SUPABASE_KEY, {
+	auth: {
+		// Persist sessions so password recovery session is available to updateUser.
+		persistSession: true,
+		autoRefreshToken: true,
+		detectSessionInUrl: true,
+	},
+});

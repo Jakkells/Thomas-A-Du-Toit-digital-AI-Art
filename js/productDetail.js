@@ -4,8 +4,39 @@ import { showToast, setButtonLoading } from './utils/dom.js';
 
 let pdState = { idx: 0, count: 0 };
 let currentLoadToken = 0;
+// Reference object so the click handler can see updates after network fetch
+const productRef = { value: null };
 
 const ZAR = new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR' });
+
+// Centralized click handler to prevent multiple bindings
+async function handleAddToCartClick(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const btn = e.currentTarget;
+  if (btn.dataset.adding === '1') return; // debounce rapid clicks
+  const prod = productRef.value;
+  if (!prod || !prod.id) {
+    showToast('Loading product…', { variant: 'info', duration: 1500 });
+    return;
+  }
+  try {
+    btn.dataset.adding = '1';
+    setButtonLoading(btn, true, 'Adding…');
+    // If it takes longer than 1.2s, update the label to reassure the user
+    const slowTip = setTimeout(() => {
+      try { if (btn.getAttribute('aria-busy') === 'true') btn.textContent = 'Almost there…'; } catch {}
+    }, 1200);
+    await addToCart(prod, 1);
+    clearTimeout(slowTip);
+    showToast('Added to cart');
+  } catch (e2) {
+    showToast('Failed to add', { variant: 'error', duration: 2500 });
+  } finally {
+    setButtonLoading(btn, false);
+    delete btn.dataset.adding;
+  }
+}
 
 function parseCsvImages(csvOrArr) {
   if (Array.isArray(csvOrArr)) {
@@ -103,8 +134,8 @@ export async function loadProductDetailFromHash() {
   const typeEl = document.getElementById('pdType');
   const descEl = document.getElementById('pdDesc');
   const btn = document.getElementById('pdAddToCart');
-  // Reference object so the click handler can see updates after network fetch
-  const productRef = { value: null };
+  // Reset reference while loading a new product
+  productRef.value = null;
 
   if (!id) {
     if (nameEl) nameEl.textContent = 'Product';
@@ -137,20 +168,11 @@ export async function loadProductDetailFromHash() {
   }
 
   // Bind click immediately; will use productRef which updates when fetch completes
-  if (btn) {
-    btn.onclick = async () => {
-      const prod = productRef.value;
-      if (!prod || !prod.id) { alert('Loading product…'); return; }
-      try {
-        setButtonLoading(btn, true, 'Adding…');
-        await addToCart(prod, 1);
-        showToast('Added to cart');
-      } catch (e) {
-        showToast('Failed to add', { variant: 'error', duration: 2500 });
-      } finally {
-        setButtonLoading(btn, false);
-      }
-    };
+  if (btn && !btn.dataset.bound) {
+    btn.dataset.bound = '1';
+    // Ensure clicking doesn't submit any surrounding form
+    try { btn.setAttribute('type', 'button'); } catch {}
+    btn.addEventListener('click', handleAddToCartClick);
   }
 
   const token = ++currentLoadToken;
@@ -170,6 +192,7 @@ export async function loadProductDetailFromHash() {
     setMainImage('');
     buildCarousel([]);
     updateArrows();
+    productRef.value = null;
     return;
   }
 

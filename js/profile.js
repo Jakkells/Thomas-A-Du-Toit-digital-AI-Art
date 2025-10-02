@@ -7,17 +7,9 @@ export function displayNameFrom(profile, user) {
   return local.charAt(0).toUpperCase() + local.slice(1);
 }
 
+// Deprecated in favor of auth.js renderLoggedInUI; keep no-op to avoid breaking callers
 export function showUserUI(profile, user, supabase) {
-  const container = document.querySelector('.auth-buttons');
-  if (!container) return;
-  container.innerHTML = `
-    <span class="user-name">${displayNameFrom(profile, user)}</span>
-    <button class="btn btn-outline" id="logoutBtn">Logout</button>
-  `;
-  document.getElementById('logoutBtn')?.addEventListener('click', async () => {
-    await supabase.auth.signOut();
-    location.reload();
-  });
+  // Intentionally handled by auth.js (renderLoggedInUI / renderLoggedOutUI)
 }
 
 export async function ensureProfile(supabase, user) {

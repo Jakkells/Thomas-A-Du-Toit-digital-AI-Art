@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient.js';
 import { loadProducts, productCard } from './products.js';
-import { showConfirm } from './utils/dom.js';
+import { showConfirm, showToast } from './utils/dom.js';
 
 function show(el) {
   if (el) {
@@ -441,10 +441,10 @@ export function initMaintenance() {
             }
           }
         } catch {}
-        // Refresh grids from server in background
-        loadProducts();
-        // Force a light page refresh after a short delay to guarantee clean state
-        setTimeout(() => { try { location.reload(); } catch {} }, 200);
+  // Refresh grids from server
+  await loadProducts();
+  // Inform and keep user on Maintenance
+  try { showToast('Product deleted'); } catch {}
       } catch (err) {
         alert('Failed to delete: ' + (err?.message || err));
       } finally {
@@ -490,7 +490,7 @@ export function initMaintenance() {
       const submitBtn = form.querySelector('button[type="submit"]');
       if (submitBtn) {
         submitBtn.disabled = true;
-        submitBtn.textContent = 'Saving...';
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
       }
 
       try {
@@ -546,9 +546,9 @@ export function initMaintenance() {
         }
         const createdArr = await res.json().catch(() => null);
         const created = Array.isArray(createdArr) ? createdArr[0] : createdArr || productData;
-        console.log('Insert successful!', created);
-        console.log('Product added successfully');
-        alert('Product added.');
+  console.log('Insert successful!', created);
+  console.log('Product added successfully');
+  showToast('Product added');
         form.reset();
         selectedFiles = [];
         renderPreview();
@@ -565,17 +565,19 @@ export function initMaintenance() {
           grid.insertBefore(card, grid.firstChild);
         });
 
-        // Reconcile with server state in background
-        loadProducts(); // refresh both grids
-
-        // User request: force a full refresh after a product has been uploaded
-        // to avoid any blank/stale state issues from prior navigation
+        // Reconcile with server state
+        await loadProducts(); // refresh both grids; no full page reload
+        // Optional safety: if loading hangs, give user a retry action
         setTimeout(() => {
-          try { location.reload(); } catch {}
-        }, 200);
+          document.querySelectorAll('#productsGrid, #productsGridMaintenance').forEach(grid => {
+            if (grid && /Loading products/i.test(grid.textContent || '')) {
+              grid.innerHTML = '<div style="grid-column:1/-1; padding:12px; text-align:center; color:#666;">Still loading… <button class="btn btn-outline-light" style="margin-left:8px;" onclick="window.__retryLoadProducts && window.__retryLoadProducts()">Try again</button></div>';
+            }
+          });
+        }, 9000);
       } catch (err) {
         console.error('Add product failed:', err);
-        alert('Failed to add product: ' + (err?.message || err));
+        showToast('Failed to add product', { variant: 'error', duration: 3000 });
       } finally {
         // Re-enable the submit button
         if (submitBtn) {
