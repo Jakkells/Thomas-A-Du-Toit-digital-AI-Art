@@ -49,12 +49,12 @@ export function productCard(p, { deletable = false } = {}) {
     <div class="thumb">
       <img src="${img}" alt="${(p.name || 'Product').replace(/"/g, '&quot;')}" loading="lazy"/>
       ${out ? '<span class="badge-out">Out of stock</span>' : ''}
-      ${deletable ? `<button class="delete-btn btn-delete-product" data-id="${p.id}" title="Delete">🗑️</button>` : ''}
     </div>
     <div class="info">
       <div class="name">${p.name || ''}</div>
       <div class="type">${p.item_type || ''}</div>
       <div class="price">${ZAR.format(Number(p.price || 0))}</div>
+      ${deletable ? `<div class="card-actions"><button class="btn btn-danger btn-delete-product" data-id="${p.id}" title="Delete">Delete</button></div>` : ''}
     </div>
   `;
   return a;
@@ -123,6 +123,12 @@ export function initProducts() {
     if (!grid || grid.dataset.clickBound) return;
     grid.dataset.clickBound = '1';
     grid.addEventListener('click', (e) => {
+      // If the delete button was clicked, do not navigate to the product
+      if (e.target && e.target.closest && e.target.closest('.btn-delete-product')) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       const a = e.target.closest && e.target.closest('a.product-card');
       if (!a || !grid.contains(a)) return;
       const href = a.getAttribute('href');

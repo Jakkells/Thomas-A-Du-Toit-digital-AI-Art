@@ -129,6 +129,8 @@ button, .btn, input, select, textarea { min-height: 44px; }
 
 /* Desktop nav */
 #siteNav .nav-menu { display: flex; gap: 16px; }
+/* Hide mobile-only greeting by default (desktop) */
+.nav-greeting { display: none; }
 
 /* Hide nav-menu Logout item by default (only show on mobile) */
 #nav-logout { display: none; }
@@ -163,6 +165,13 @@ button, .btn, input, select, textarea { min-height: 44px; }
     list-style: none; margin: 0; padding: 0;
   }
   #siteNav a { color: #fff; text-decoration: none; font-size: 1.05rem; }
+  /* Friendly greeting at the top of the mobile nav */
+  .nav-greeting {
+    display: block; /* visible only on mobile */
+    color: #bbb;
+    font-weight: 600;
+    padding: 6px 2px 10px;
+  }
 }
 
 /* Main Content */
@@ -342,6 +351,12 @@ button, .btn, input, select, textarea { min-height: 44px; }
 .product-card .name { font-weight: 600; }
 .product-card .type { color: #666; font-size: 0.9em; }
 .product-card .price { font-weight: 700; }
+/* Actions under card info */
+.card-actions { margin-top: 6px; }
+.btn-danger {
+  background: #e53935; color: #fff; border: 2px solid #e53935; border-radius: 8px; padding: 8px 12px; font-weight: 700;
+}
+.btn-danger:hover { background: #c62828; border-color: #c62828; }
 /* Delete button on product cards (only rendered on Maintenance) */
 .product-card .thumb .delete-btn {
   position: absolute;
@@ -418,6 +433,8 @@ button, .btn, input, select, textarea { min-height: 44px; }
   #nav-logout { display: list-item; }
   /* Show nav Login/Sign Up when logged out */
   #nav-login, #nav-signup { display: list-item; }
+  /* Hide the header username on mobile (use greeting in hamburger instead) */
+  .user-name, #userName { display: none !important; }
 }
 
 /* Ultra-small devices: hide the name if space is extremely constrained */
@@ -461,19 +478,23 @@ button, .btn, input, select, textarea { min-height: 44px; }
 /* Product detail layout */
 .product-detail-section { padding: 24px 12px; }
 .pd-back {
-  position: absolute;
-  top: 60px;   /* align with main-content top padding */
-  left: 20px;  /* align with main-content side padding */
-  z-index: 50;
-  display: inline-block;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: #f5f5f5;
-  color: #000;
+  position: sticky;
+  top: 70px;   /* just under header */
+  left: 0;
+  margin-left: 20px;  /* align with main-content padding */
+  z-index: 60;
+  display: none;       /* hidden by default (desktop) */
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: #000;
+  color: #fff;
   text-decoration: none;
-  font-weight: 600;
+  font-weight: 800;
+  font-size: clamp(18px, 2.6vw, 26px); /* bigger arrow */
+  line-height: 1;
+  
 }
-.pd-back:hover { background: #e9e9e9; }
+.pd-back:hover { background: #111; }
 .pd-layout {
   display: grid;
   grid-template-columns: 92px 1fr 420px;
@@ -481,6 +502,8 @@ button, .btn, input, select, textarea { min-height: 44px; }
 }
 @media (max-width: 900px) {
   .pd-layout { grid-template-columns: 1fr; }
+  /* Show back arrow only on small screens */
+  .pd-back { display: inline-block; }
   .pd-thumbs {
     order: 1;
     max-height: none; overflow-x: auto; overflow-y: hidden; display: flex; flex-direction: row; gap: 8px;
@@ -755,6 +778,19 @@ button[disabled], .btn[aria-busy="true"] { opacity: 0.7; cursor: not-allowed; }
   display: flex; flex-direction: column;
 }
 
+/* Fix phone input inside modal */
+.iti { width: 100%; }
+/* The dropdown is appended to <body> when using dropdownContainer: document.body.
+  Make sure its container and list are above the modal (z-index ~2000). */
+.iti--container, .iti__container {
+  position: fixed !important; /* ensure overlay above fixed modal */
+  z-index: 99999 !important;
+}
+.iti__country-list {
+  z-index: 100000 !important;
+  background: #fff;
+}
+
 /* Product maintenance modal: allow the panel itself to scroll */
 #productModal .modal-content {
   max-height: 90dvh;
@@ -788,4 +824,48 @@ button[disabled], .btn[aria-busy="true"] { opacity: 0.7; cursor: not-allowed; }
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding-bottom: calc(24px + env(safe-area-inset-bottom));
+}
+
+/* Toasts */
+.toast-container {
+  position: fixed;
+  left: 50%; bottom: calc(16px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 8px;
+  z-index: 3000;
+}
+.toast {
+  min-width: 220px; max-width: 90vw;
+  padding: 10px 14px;
+  border-radius: 10px;
+  color: #fff; font-weight: 600;
+  box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  opacity: 0; transform: translateY(8px) scale(.98);
+  transition: opacity .2s ease, transform .2s ease;
+  text-align: center;
+}
+.toast.show { opacity: 1; transform: translateY(0) scale(1); }
+.toast-success { background: #0f9d58; }
+.toast-error { background: #d93025; }
+.toast-info { background: #1a73e8; }
+
+/* Confirm dialog spacing tweaks */
+.confirm-modal .modal-content {
+  padding: 16px;                 /* consistent inset around title/body/footer */
+}
+.confirm-modal h3 {
+  margin: 0 0 6px;               /* tidy title spacing */
+}
+.confirm-modal .modal-body {
+  padding: 8px 0 0;              /* avoid double padding (modal-content already padded) */
+}
+.confirm-modal .modal-footer {
+  position: static;              /* no sticky for small confirm */
+  padding: 12px 0 0;             /* align with body padding */
+  display: flex; gap: 10px;      /* even gap between buttons */
+  border-top: 1px solid #eee;
+}
+.confirm-modal .modal-footer .btn {
+  width: auto;                   /* override global full-width */
+  flex: 1;                       /* make buttons equal width */
 }

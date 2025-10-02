@@ -1,5 +1,7 @@
 import { onReady, showModal, hideModal, setupShowPassword, showGlobalMsg } from './utils/dom.js';
 import { supabase } from './supabaseClient.js';
+import { ensureProfile } from './profile.js';
+import { getFullNumber, isValidNumber } from './phoneInput.js';
 
 // Reusable: bind close handlers to a modal container
 function bindModalClose(modal) {
@@ -52,13 +54,16 @@ function ensureLogoutStyle() {
 
 // Shared logout routine for header button and mobile menu item
 async function doLogout(source) {
+  // Prevent duplicate invocations from bubbling/global handlers
+  if (document.body.dataset.loggingOut === '1') return;
+  document.body.dataset.loggingOut = '1';
   const headerBtn = document.getElementById('logoutBtn');
   const navLink = document.getElementById('navLogoutLink');
   try {
     if (source === 'header' && headerBtn) setBtnLoading(headerBtn, true, 'Logging out…');
     if (source === 'nav' && navLink) { navLink.setAttribute('aria-busy', 'true'); navLink.style.opacity = '0.7'; }
-    // Explicit local scope sign-out
-    await supabase.auth.signOut({ scope: 'local' });
+    // Sign out globally to ensure all tabs/sessions are cleared
+    await supabase.auth.signOut({ scope: 'global' });
     // Hard-clear any lingering sb-* auth token (defensive)
     try {
       Object.keys(localStorage).forEach((k) => {
@@ -75,7 +80,8 @@ async function doLogout(source) {
     // Clear lightweight caches
     try { sessionStorage.removeItem('cart:last'); } catch {}
   } catch (err) {
-    alert('Failed to logout. Please try again.');
+    // Log but proceed with local cleanup + reload
+    console.warn('Logout error (continuing with cleanup):', err);
   } finally {
     if (headerBtn) setBtnLoading(headerBtn, false);
     if (navLink) { navLink.removeAttribute('aria-busy'); navLink.style.opacity = ''; }
@@ -83,8 +89,10 @@ async function doLogout(source) {
     document.body.classList.remove('nav-open');
     const menuToggle = document.getElementById('menuToggle');
     if (menuToggle) menuToggle.setAttribute('aria-expanded', 'false');
+    // Clear in-flight guard
+    delete document.body.dataset.loggingOut;
     // As a final guarantee, perform a light reload to fully reset state
-    setTimeout(() => { try { location.reload(); } catch {} }, 150);
+    setTimeout(() => { try { location.reload(); } catch {} }, 100);
   }
 }
 
@@ -96,12 +104,46 @@ function openLoginUI(which = 'login') {
     document.body.classList.add('no-scroll');   // lock background scroll
     bindModalClose(modal);
     // Bind forms after shown, so submit buttons exist
-    setTimeout(() => { bindLoginForm(); bindSignupForm(); bindOauthButtons(); if (which === 'signup') ensurePhoneInput(); }, 0);
+    setTimeout(() => {
+      bindLoginForm();
+      bindSignupForm();
+      bindOauthButtons();
+      // Bind show/hide password toggles
+      try {
+        setupShowPassword('loginPassword', 'showLoginPassword');
+        setupShowPassword('signupPassword', 'showSignupPassword');
+        // Touch support: mirror click on touchend for some mobile browsers
+        ['showLoginPassword','showSignupPassword'].forEach(id => {
+          const b = document.getElementById(id);
+          if (b && !b.dataset.touchBound) {
+            b.dataset.touchBound = '1';
+            b.addEventListener('touchend', (e) => { e.preventDefault(); b.click(); }, { passive: false });
+          }
+        });
+      } catch {}
+      if (which === 'signup') ensurePhoneInput();
+    }, 0);
     return;
   }
   if (document.getElementById(which)) {
     location.hash = `#${which}`;
-    setTimeout(() => { bindLoginForm(); bindSignupForm(); bindOauthButtons(); if (which === 'signup') ensurePhoneInput(); }, 0);
+    setTimeout(() => {
+      bindLoginForm();
+      bindSignupForm();
+      bindOauthButtons();
+      try {
+        setupShowPassword('loginPassword', 'showLoginPassword');
+        setupShowPassword('signupPassword', 'showSignupPassword');
+        ['showLoginPassword','showSignupPassword'].forEach(id => {
+          const b = document.getElementById(id);
+          if (b && !b.dataset.touchBound) {
+            b.dataset.touchBound = '1';
+            b.addEventListener('touchend', (e) => { e.preventDefault(); b.click(); }, { passive: false });
+          }
+        });
+      } catch {}
+      if (which === 'signup') ensurePhoneInput();
+    }, 0);
     return;
   }
   console.warn('Auth UI not found.');
@@ -161,17 +203,35 @@ function bindSignupForm() {
   if (!form || form.dataset.bound) return;
   form.dataset.bound = '1';
 
-  const submitBtn = form.querySelector('button[type="submit"], #signupSubmit');
+  // Footer button lives outside the form; select it from the document
+  const submitBtn = document.getElementById('signupSubmit') || form.querySelector('button[type="submit"]');
 
   const onSubmit = async (e) => {
     e.preventDefault();
     const email = form.querySelector('#signupEmail, [name="email"]')?.value?.trim();
     const password = form.querySelector('#signupPassword, [name="password"]')?.value || '';
+    const first_name = form.querySelector('#signupFirstName')?.value?.trim() || '';
+    const middle_name = form.querySelector('#signupMiddleName')?.value?.trim() || '';
+    const last_name = form.querySelector('#signupLastName')?.value?.trim() || '';
+    const phone_number = getFullNumber();
+    const address = form.querySelector('#signupAddress')?.value?.trim() || '';
     if (!email || !password) { alert('Enter email and password.'); return; }
+    // Optional: basic phone validation if library is active
+    try { if (!isValidNumber()) { /* non-blocking */ } } catch {}
 
     try {
       setBtnLoading(submitBtn, true, 'Signing up…');
-      const { error } = await supabase.auth.signUp({ email, password });
+      // Save a local draft so we can create the profile on first login if needed
+      try {
+        localStorage.setItem('signupDraft', JSON.stringify({ first_name, middle_name, last_name, phone_number, address }));
+      } catch {}
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { first_name, middle_name, last_name, phone_number, address }
+        }
+      });
       if (error) throw error;
       alert('Check your email to confirm your account.');
       const modal = document.getElementById('authModal') || document.getElementById('signupModal');
@@ -186,9 +246,24 @@ function bindSignupForm() {
   form.addEventListener('submit', onSubmit);
   if (submitBtn && !submitBtn.dataset.bound) {
     submitBtn.dataset.bound = '1';
-    submitBtn.addEventListener('click', onSubmit);
+    // Ensure footer button acts as submit on mobile
+    submitBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      form.requestSubmit ? form.requestSubmit() : onSubmit(e);
+    });
   }
 }
+
+// Also allow switching from Login modal to Signup and initialize phone input
+document.addEventListener('click', (e) => {
+  const t = e.target;
+  if (t && t.id === 'switchToSignup') {
+    e.preventDefault();
+    const loginModal = document.getElementById('loginModal');
+    if (loginModal) loginModal.style.display = 'none';
+    openLoginUI('signup');
+  }
+});
 
 // Optional: OAuth buttons loading state
 function bindOauthButtons() {
@@ -230,12 +305,56 @@ function ensureLogoutInMenu() {
   const link = document.getElementById('navLogoutLink');
   if (link && !link.dataset.bound) {
     link.dataset.bound = '1';
-    link.addEventListener('click', async (e) => { e.preventDefault(); await doLogout('nav'); });
+    link.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      await doLogout('nav');
+    });
   }
 }
 
+// Global click fallback: if elements are re-rendered before specific bindings,
+// still catch logout clicks reliably.
+document.addEventListener('click', async (e) => {
+  const t = e.target;
+  if (!t) return;
+  if (t.id === 'logoutBtn') {
+    e.preventDefault();
+    await doLogout('header');
+  } else if (t.id === 'navLogoutLink') {
+    e.preventDefault();
+    e.stopPropagation();
+    await doLogout('nav');
+  }
+});
+
 function removeLogoutFromMenu() {
   const li = document.getElementById('nav-logout');
+  if (li) li.remove();
+}
+
+// Insert a greeting at the very top of the hamburger nav (mobile)
+function ensureGreetingInMenu(displayName) {
+  const menu = document.querySelector('.nav-menu');
+  if (!menu) return;
+  let li = document.getElementById('nav-greeting');
+  const name = (displayName || '').trim();
+  const friendly = name || 'friend';
+  const text = `Browsing are we, ${friendly}?`;
+  if (!li) {
+    li = document.createElement('li');
+    li.id = 'nav-greeting';
+    li.className = 'nav-greeting';
+    li.textContent = text;
+    // Insert at the top
+    menu.insertBefore(li, menu.firstChild);
+  } else {
+    li.textContent = text;
+  }
+}
+
+function removeGreetingFromMenu() {
+  const li = document.getElementById('nav-greeting');
   if (li) li.remove();
 }
 
@@ -292,9 +411,9 @@ function removeAuthLinksFromMenu() {
 function renderLoggedInUI(profile, user) {
   const auth = document.getElementById('authControls');
   if (!auth) return;
-  const display = profile?.name || profile?.first_name || user?.email || 'Account';
+  const display = profile?.first_name || profile?.name || user?.email || 'Account';
   auth.innerHTML = `
-    <span id="userName" class="user-name" title="${display}">${display}</span>
+    <span id="userName" class="user-name" title="${display}">Hi ${display}</span>
     <button id="logoutBtn" class="btn btn-outline-light">Logout</button>
   `;
   ensureLogoutStyle();
@@ -302,11 +421,13 @@ function renderLoggedInUI(profile, user) {
   const logoutBtn = document.getElementById('logoutBtn');
   if (logoutBtn && !logoutBtn.dataset.bound) {
     logoutBtn.dataset.bound = '1';
-    logoutBtn.addEventListener('click', async (e) => { e.preventDefault(); await doLogout('header'); });
+    logoutBtn.addEventListener('click', async (e) => { e.preventDefault(); e.stopPropagation(); await doLogout('header'); });
   }
   const role = (profile?.role || '').toLowerCase();
   // Expose Logout inside hamburger menu for mobile
   ensureLogoutInMenu();
+  // Friendly greeting at the top of the hamburger
+  ensureGreetingInMenu(profile?.first_name || profile?.name || user?.email?.split('@')[0] || 'friend');
   // Remove Login/Signup menu items when logged in
   removeAuthLinksFromMenu();
   emitAuthChanged(role === 'admin', user);
@@ -321,6 +442,8 @@ function renderLoggedOutUI() {
   `;
   // Remove mobile nav logout item when logged out
   removeLogoutFromMenu();
+  // Remove greeting when logged out
+  removeGreetingFromMenu();
   // Add Login/Sign Up into hamburger menu (mobile)
   ensureAuthLinksInMenu();
   bindAuthButtons();
@@ -335,7 +458,7 @@ export async function initAuth() {
   const { data: sessionData } = await supabase.auth.getSession();
   if (sessionData?.session?.user) {
     const user = sessionData.session.user;
-    const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
+    const profile = await ensureProfile(supabase, user);
     renderLoggedInUI(profile, user);
   } else {
     renderLoggedOutUI();
@@ -343,7 +466,7 @@ export async function initAuth() {
 
   supabase.auth.onAuthStateChange(async (_evt, session) => {
     if (session?.user) {
-      const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+      const profile = await ensureProfile(supabase, session.user);
       renderLoggedInUI(profile, session.user);
     } else {
       renderLoggedOutUI();

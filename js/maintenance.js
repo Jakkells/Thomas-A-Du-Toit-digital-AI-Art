@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient.js';
 import { loadProducts, productCard } from './products.js';
+import { showConfirm } from './utils/dom.js';
 
 function show(el) {
   if (el) {
@@ -411,13 +412,43 @@ export function initMaintenance() {
       e.preventDefault();
       e.stopPropagation();
       const id = btn.dataset.id;
-      const ok = confirm('Delete this product?');
+      const ok = await showConfirm({
+        title: 'Delete Product',
+        message: 'Are you sure you want to delete this product? This cannot be undone.',
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+        variant: 'danger'
+      });
       if (!ok) return;
       try {
+        const origLabel = btn.textContent;
+        btn.textContent = 'Deleting…';
+        btn.disabled = true;
         await deleteProductById(id);
+        // Optimistically remove card from both grids
+        document.querySelectorAll(`.btn-delete-product[data-id="${CSS.escape(id)}"]`).forEach(b => {
+          const card = b.closest('a.product-card');
+          if (card && card.parentElement) card.parentElement.removeChild(card);
+        });
+        // If product detail is currently showing this product, navigate back to shop
+        try {
+          const current = (location.hash || '').toLowerCase();
+          if (current.startsWith('#product')) {
+            const params = new URLSearchParams(current.split('?')[1] || '');
+            const currentId = params.get('id');
+            if (currentId && String(currentId) === String(id)) {
+              location.hash = '#shop';
+            }
+          }
+        } catch {}
+        // Refresh grids from server in background
         loadProducts();
+        // Force a light page refresh after a short delay to guarantee clean state
+        setTimeout(() => { try { location.reload(); } catch {} }, 200);
       } catch (err) {
         alert('Failed to delete: ' + (err?.message || err));
+      } finally {
+        try { btn.textContent = origLabel || 'Delete'; btn.disabled = false; } catch {}
       }
     });
   }

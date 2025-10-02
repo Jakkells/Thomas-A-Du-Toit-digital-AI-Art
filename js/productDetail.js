@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient.js';
 import { addToCart } from './cart.js';
+import { showToast, setButtonLoading } from './utils/dom.js';
 
 let pdState = { idx: 0, count: 0 };
 let currentLoadToken = 0;
@@ -141,10 +142,13 @@ export async function loadProductDetailFromHash() {
       const prod = productRef.value;
       if (!prod || !prod.id) { alert('Loading product…'); return; }
       try {
+        setButtonLoading(btn, true, 'Adding…');
         await addToCart(prod, 1);
-        alert('Added to cart.');
+        showToast('Added to cart');
       } catch (e) {
-        alert('Failed: ' + (e?.message || e));
+        showToast('Failed to add', { variant: 'error', duration: 2500 });
+      } finally {
+        setButtonLoading(btn, false);
       }
     };
   }
