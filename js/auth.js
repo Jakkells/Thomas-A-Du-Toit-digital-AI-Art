@@ -444,11 +444,16 @@ function bindSignupForm() {
       try {
         localStorage.setItem('signupDraft', JSON.stringify({ first_name, middle_name, last_name, phone_number, address }));
       } catch {}
+      // Important: Set emailRedirectTo so confirmation links do NOT fall back to the project's Site URL
+      // (which may be set to localhost during development). This forces Supabase to
+      // redirect back to the current deployed origin/path on mobile and desktop.
+      const emailRedirectTo = window.location.origin + window.location.pathname;
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: { first_name, middle_name, last_name, phone_number, address }
+          data: { first_name, middle_name, last_name, phone_number, address },
+          emailRedirectTo
         }
       });
       if (error) {
