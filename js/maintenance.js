@@ -160,16 +160,8 @@ function renderPreview() {
 }
 
 function acceptFiles(fileList) {
-  console.log('acceptFiles called with:', fileList);
   const files = Array.from(fileList || []).filter(f => f.type.startsWith('image/'));
-  console.log('Filtered image files:', files.map(f => ({
-    name: f.name,
-    size: f.size,
-    type: f.type,
-    isFile: f instanceof File
-  })));
   selectedFiles = selectedFiles.concat(files);
-  console.log('Total selected files:', selectedFiles.length);
   renderPreview();
 }
 
@@ -191,26 +183,15 @@ function setupDropzone() {
 }
 
 async function uploadImages(productId) {
-  console.log('uploadImages called with', selectedFiles.length, 'files');
   const urls = [];
   
   // If no files selected, return empty array
   if (selectedFiles.length === 0) {
-    console.log('No files to upload');
     return urls;
   }
   
   for (let i = 0; i < selectedFiles.length; i++) {
     const file = selectedFiles[i];
-    console.log(`Uploading file ${i + 1}/${selectedFiles.length}:`, file.name);
-    console.log('File object details:', {
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      lastModified: file.lastModified,
-      isFile: file instanceof File,
-      isBlob: file instanceof Blob
-    });
     
     // Ensure we have a valid file
     if (!file || !(file instanceof File)) {
@@ -219,20 +200,16 @@ async function uploadImages(productId) {
     
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
     const path = `${FOLDER}/${productId}/${Date.now()}-${i}.${ext}`;
-    console.log('Upload path:', path);
 
     try {
-      console.log('Starting upload (direct REST)...');
       await uploadFileDirect(file, path);
       const publicUrl = buildPublicUrl(path);
-      console.log('Public URL:', publicUrl);
       urls.push(publicUrl);
     } catch (uploadError) {
       console.error('Upload failed:', uploadError);
       throw uploadError;
     }
   }
-  console.log('All uploads complete:', urls);
   return urls;
 }
 
@@ -342,7 +319,6 @@ async function restPost(table, row, timeoutMs = 8000) {
 
 // Try to delete any cart items that reference this product (REST)
 async function deleteCartItemsForProduct(productId) {
-  console.log('[delete] removing cart_items for product', productId);
   const res = await restDelete(`cart_items?product_id=eq.${encodeURIComponent(productId)}`);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -353,7 +329,6 @@ async function deleteCartItemsForProduct(productId) {
 
 // Delete a product and, if needed, its dependent cart_items. Remove images last (non-blocking)
 async function deleteProductById(id) {
-  console.log('[delete] start for product', id);
   // Get product image_urls to clean up later. If this fails, proceed.
   let imageCsv = '';
   try {
@@ -383,7 +358,6 @@ async function deleteProductById(id) {
     throw new Error(`product delete failed (${res.status}): ${text}`);
   }
 
-  console.log('[delete] product deleted, scheduling image cleanup');
   // Fire-and-forget image cleanup so UI is not blocked
   setTimeout(() => {
     removeImagesForProduct(id, imageCsv).catch(e => console.warn('Image removal warning:', e));
@@ -560,10 +534,10 @@ export function initMaintenance() {
     form.dataset.bound = '1';
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      console.log('Form submission started...');
+      
 
       // Skip connection test - proceed directly with form processing
-      console.log('Processing form submission...');
+      
 
       const name = document.getElementById('prodName')?.value?.trim() || '';
   const item_type = document.getElementById('prodType')?.value?.trim() || '';
@@ -572,20 +546,20 @@ export function initMaintenance() {
       const price = parseFloat(document.getElementById('prodPrice')?.value || '0');
   const category = document.getElementById('prodCategory')?.value?.trim() || '';
 
-  console.log('Form values:', { name, item_type, description, stock, price });
+  
 
       if (!name || !item_type) { 
-        console.log('Validation failed: name or type missing');
+        
         alert('Please fill in name and type.'); 
         return; 
       }
       if (Number.isNaN(stock) || stock < 0) { 
-        console.log('Validation failed: invalid stock');
+        
         alert('Stock must be 0 or more.'); 
         return; 
       }
       if (Number.isNaN(price) || price < 0) { 
-        console.log('Validation failed: invalid price');
+        
         alert('Price must be 0 or more.'); 
         return; 
       }
@@ -598,38 +572,36 @@ export function initMaintenance() {
       }
 
       try {
-        const productId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        console.log('Generated product ID:', productId);
+  const productId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
         // Upload images first (if any)
-        console.log('Uploading images...', selectedFiles.length, 'files');
+        
         let imgUrls = [];
         
         if (selectedFiles.length > 0) {
           try {
-            console.log('Starting image upload process...');
+            
             imgUrls = await uploadImages(productId);
-            console.log('All images uploaded successfully:', imgUrls);
+            
           } catch (uploadError) {
             console.error('Image upload failed:', uploadError);
             const continueWithoutImages = confirm(`Image upload failed: ${uploadError.message}\n\nContinue saving product without images?`);
             if (!continueWithoutImages) {
               throw uploadError;
             }
-            console.log('User chose to continue without images...');
             imgUrls = [];
           }
         } else {
-          console.log('No images selected - proceeding without images');
+          
         }
         
         const image_urls = imgUrls.join(', ');
         const hidden = document.getElementById('prodImageUrls');
         if (hidden) hidden.value = image_urls;
 
-        console.log('Skipping auth check for now...');
+        
 
-        console.log('Inserting product into database...');
+        
         const productData = {
           id: productId,
           name,
@@ -640,10 +612,9 @@ export function initMaintenance() {
           stock,
           price
         };
-        console.log('Product data:', productData);
+        
 
         // Use direct REST API call with authentication
-        console.log('Inserting via REST (PostgREST) with timeout...');
         const res = await restPost('products', productData);
         if (!res.ok) {
           const text = await res.text().catch(() => '');
@@ -651,8 +622,6 @@ export function initMaintenance() {
         }
         const createdArr = await res.json().catch(() => null);
         const created = Array.isArray(createdArr) ? createdArr[0] : createdArr || productData;
-  console.log('Insert successful!', created);
-  console.log('Product added successfully');
   showToast('Product added');
         form.reset();
         selectedFiles = [];

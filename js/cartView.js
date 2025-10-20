@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient.js';
 import { getActiveCartId, getCartSummaryCount, removeFromCart } from './cart.js';
+import { showToast } from './utils/dom.js';
 
 const ZAR = new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR' });
 
@@ -9,6 +10,48 @@ function firstImage(csv) {
 
 // Keep latest loaded items for optimistic UI updates and instant render
 let currentItems = [];
+
+// Tiny helper to prevent long hangs
+function withTimeout(promise, ms, label = 'op') {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(label + '-timeout')), ms))
+  ]);
+}
+
+async function getUserIdFast() {
+  // Try getSession quickly, then fall back to getUser
+  try {
+    const s = await withTimeout(supabase.auth.getSession(), 2500, 'getSession');
+    const uid = s?.data?.session?.user?.id;
+    if (uid) return uid;
+  } catch {}
+  try {
+    const { data: { user } } = await withTimeout(supabase.auth.getUser(), 2500, 'getUser');
+    return user?.id || null;
+  } catch {}
+  return null;
+}
+
+// Admin role cache for this module (updated via auth:changed event)
+let _isAdmin = undefined;
+window.addEventListener('auth:changed', (e) => {
+  _isAdmin = !!e.detail?.isAdmin;
+});
+
+async function isCurrentUserAdmin() {
+  if (_isAdmin !== undefined) return _isAdmin;
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const uid = sessionData?.session?.user?.id;
+    if (!uid) { _isAdmin = false; return _isAdmin; }
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', uid).maybeSingle();
+    _isAdmin = (profile?.role || '').toLowerCase() === 'admin';
+  } catch {
+    _isAdmin = false;
+  }
+  return _isAdmin;
+}
 
 function getProductsFromCache(ids) {
   const cache = window.__PRODUCTS_CACHE || {};
@@ -89,6 +132,7 @@ async function getCartItems() {
 }
 
 function render(items) {
+  console.log('[checkout] render cart items', { count: items.length });
   const list = document.getElementById('cartList');
   const totalEl = document.getElementById('cartTotal');
   const checkout = document.getElementById('checkoutBtn');
@@ -109,14 +153,14 @@ function render(items) {
     const li = document.createElement('div');
     li.className = 'cart-item';
     const thumb = firstImage(it.image_urls);
-    const subtotal = it.qty * it.price;
+    const subtotal = Number(it.price || 0);
     total += subtotal;
 
     li.innerHTML = `
       <div class="cart-thumb"><img src="${thumb}" alt="Product"/></div>
       <div class="cart-center">
         <div class="cart-name">${it.name}</div>
-        <div class="cart-qty">Qty: ${it.qty} × ${ZAR.format(it.price)}</div>
+        <div class="cart-qty">${ZAR.format(it.price)}</div>
         <div class="cart-subtotal">${ZAR.format(subtotal)}</div>
       </div>
       <a href="#" class="cart-remove-link" data-id="${it.product_id}" aria-label="Remove ${it.name}">Remove</a>
@@ -141,9 +185,11 @@ function setCartBadge(n) {
 }
 
 export async function loadCartPage() {
+  console.log('[checkout] loadCartPage');
   // Instant render from cache (if present)
   const cached = readCachedCart();
   if (cached?.items) {
+    console.log('[checkout] using cached cart items', { count: cached.items.length });
     currentItems = cached.items;
     render(currentItems);
   } else {
@@ -152,10 +198,125 @@ export async function loadCartPage() {
   }
   // Background refresh from source of truth
   const fresh = await getCartItems();
+  console.log('[checkout] fetched cart items', { count: fresh.length });
   currentItems = fresh;
   writeCachedCart(fresh);
   render(currentItems);
   refreshCartBadge();
+
+  // Checkout handler -> Manual EFT flow
+  const checkoutBtn = document.getElementById('checkoutBtn');
+  if (checkoutBtn && !checkoutBtn.dataset.bound) {
+    checkoutBtn.dataset.bound = '1';
+    checkoutBtn.addEventListener('click', async () => {
+      console.log('[checkout] checkout click');
+      await startCheckout(checkoutBtn);
+    });
+  }
+
+  // Defensive rebind in case the DOM was re-rendered or some script prevented the initial bind
+  const ensureCheckoutBound = () => {
+    const btn = document.getElementById('checkoutBtn');
+    if (!btn) return;
+    if (!btn.dataset.bound) {
+      console.log('[checkout] late-binding checkout button');
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => startCheckout(btn));
+    }
+  };
+  document.addEventListener('visibilitychange', ensureCheckoutBound, { passive: true });
+  window.addEventListener('hashchange', ensureCheckoutBound, { passive: true });
+}
+
+// Admin view: Pending payments
+export async function loadPendingPayments() {
+  const list = document.getElementById('pendingList');
+  if (!list) return;
+  list.innerHTML = '<div>Loading…</div>';
+  const { data: s } = await supabase.auth.getSession();
+  if (!s?.session) { list.innerHTML = '<div>Please log in.</div>'; return; }
+  // Only fetch pending
+  const { data, error } = await supabase
+    .from('orders')
+    .select('id, eft_reference, total_price, status, created_at, user_id')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false });
+  if (error) { list.innerHTML = '<div>Error loading pending.</div>'; return; }
+  if (!data?.length) { list.innerHTML = '<div>No pending payments.</div>'; return; }
+  const fmt = new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR' });
+  list.innerHTML = '';
+  data.forEach(o => {
+    const row = document.createElement('div');
+    row.className = 'pending-row';
+    row.style.border = '1px solid #ddd';
+    row.style.borderRadius = '8px';
+    row.style.padding = '10px';
+    row.innerHTML = `
+      <div><strong>Ref:</strong> ${o.eft_reference || '—'}</div>
+      <div><strong>Total:</strong> ${fmt.format(Number(o.total_price || 0))}</div>
+      <div><strong>Date:</strong> ${new Date(o.created_at).toLocaleString()}</div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="btn" data-action="copy" data-ref="${o.eft_reference || ''}">Copy Ref</button>
+        <button class="btn btn-solid" data-action="mark-paid" data-id="${o.id}" data-user="${o.user_id || ''}">Mark Paid</button>
+        <button class="btn" data-action="mark-cancelled" data-id="${o.id}" data-user="${o.user_id || ''}">Mark Cancelled</button>
+      </div>
+    `;
+    list.appendChild(row);
+  });
+
+  if (!list.dataset.bound) {
+    list.dataset.bound = '1';
+    list.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      if (action === 'copy') {
+        const r = btn.dataset.ref || '';
+        await navigator.clipboard?.writeText(r);
+        alert('Reference copied');
+      }
+      if (action === 'mark-paid' || action === 'mark-cancelled') {
+        const id = Number(btn.dataset.id);
+        const userId = btn.dataset.user || null;
+  const status = action === 'mark-paid' ? 'paid' : 'cancelled';
+  const patch = { status };
+        const { error } = await supabase.from('orders').update(patch).eq('id', id).in('status', ['pending','failed']);
+        if (error) { alert('Update failed'); return; }
+
+        // If marked paid, trigger delivery email via API (best-effort)
+        if (status === 'paid') {
+          try {
+            const apiBase = (window.API_BASE_URL || '').replace(/\/+$/, '');
+            const url = apiBase ? `${apiBase}/api/sendOrderEmail` : '/api/sendOrderEmail';
+            await fetch(url, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ orderId: id })
+            });
+          } catch {}
+        }
+
+        // If paid: close user's active cart(s) and clear their items
+        if (status === 'paid' && userId) {
+          try {
+            const { data: carts } = await supabase
+              .from('carts')
+              .select('id')
+              .eq('user_id', userId)
+              .eq('status', 'active');
+            const ids = (carts || []).map(c => c.id);
+            if (ids.length) {
+              await supabase.from('cart_items').delete().in('cart_id', ids);
+              await supabase.from('carts').update({ status: 'checked_out' }).in('id', ids);
+            }
+          } catch (e) {
+            console.warn('Cart close/clear failed:', e?.message || e);
+          }
+        }
+        loadPendingPayments();
+      }
+    });
+  }
 }
 
 export function initCartView() {
@@ -191,7 +352,7 @@ export function initCartView() {
       const nextItems = currentItems.filter(it => String(it.product_id) !== String(id));
       currentItems = nextItems;
       render(currentItems);
-      const optimisticCount = currentItems.reduce((s, it) => s + (it.qty || 0), 0);
+  const optimisticCount = currentItems.length;
       setCartBadge(optimisticCount);
 
       try {
@@ -210,4 +371,319 @@ export function initCartView() {
   window.addEventListener('storage', (e) => { if (e.key === 'cart') refreshCartBadge(); });
 
   refreshCartBadge();
+}
+
+// Populate EFT page if user lands directly (e.g., after refresh)
+export function loadEftPageFromCache() {
+  try {
+    const raw = sessionStorage.getItem('eft:last');
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    console.log('[checkout] EFT page load', { ref: data.ref, amountValue: data.amountValue, itemCount: data.itemCount });
+    const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    setVal('eftpRef', data.ref || '');
+    setVal('eftpAmount', data.amount || '');
+    const bd = data.bank || {};
+    setVal('eftpAccName', bd.accountName || '');
+    setVal('eftpBank', bd.bankName || '');
+    setVal('eftpAccNo', bd.accountNumber || '');
+    setVal('eftpBranch', bd.branchCode || '');
+    setVal('eftpType', bd.type || '');
+    // Copy button removed from UI; no binding needed
+
+    // Edit toggle (allows editing only bank fields; reference/amount stay read-only)
+    const editBtn = document.getElementById('eftpEdit');
+    // Only admins may edit EFT fields
+    if (editBtn) {
+      isCurrentUserAdmin().then((isAdmin) => {
+        if (!isAdmin) {
+          // Hide the edit button for non-admins and keep fields read-only
+          editBtn.style.display = 'none';
+          return;
+        }
+        if (!editBtn.dataset.bound) {
+          editBtn.dataset.bound = '1';
+          editBtn.addEventListener('click', () => {
+            const editable = document.querySelectorAll('#eft input[data-editable="1"]');
+            const currentlyLocked = [...editable].every(el => el.readOnly);
+            editable.forEach(el => { el.readOnly = !currentlyLocked; });
+            editBtn.textContent = currentlyLocked ? 'Lock fields' : 'Edit fields';
+          });
+        }
+      }).catch(() => {
+        // On error determining admin, default to hiding the edit button
+        editBtn.style.display = 'none';
+      });
+    }
+
+    // Persist edits back into sessionStorage
+    // Persist edits only for admins
+    isCurrentUserAdmin().then((isAdmin) => {
+      if (!isAdmin) return;
+      const persist = () => {
+        try {
+          const next = {
+            ref: document.getElementById('eftpRef')?.value || data.ref || '',
+            amount: document.getElementById('eftpAmount')?.value || data.amount || '',
+            bank: {
+              accountName: document.getElementById('eftpAccName')?.value || '',
+              bankName: document.getElementById('eftpBank')?.value || '',
+              accountNumber: document.getElementById('eftpAccNo')?.value || '',
+              branchCode: document.getElementById('eftpBranch')?.value || '',
+              type: document.getElementById('eftpType')?.value || ''
+            }
+          };
+          sessionStorage.setItem('eft:last', JSON.stringify(next));
+        } catch {}
+      };
+      ['eftpAccName','eftpBank','eftpAccNo','eftpBranch','eftpType'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && !el.dataset.persistBound) {
+          el.dataset.persistBound = '1';
+          el.addEventListener('input', persist);
+          el.addEventListener('change', persist);
+        }
+      });
+    }).catch(() => {/* ignore */});
+
+    // "I paid" button -> customer marks order ready for admin review
+    const paidBtn = document.getElementById('eftpPaid');
+    if (paidBtn && !paidBtn.dataset.bound) {
+      paidBtn.dataset.bound = '1';
+      paidBtn.addEventListener('click', async () => {
+        console.log('[checkout] confirm payment click');
+        // Prevent double-submission
+        if (paidBtn.dataset.submitting === '1') return;
+        paidBtn.dataset.submitting = '1';
+
+        // Immediately show loading state for instant feedback
+        const old = paidBtn.textContent;
+        paidBtn.disabled = true;
+        try { paidBtn.setAttribute('aria-busy', 'true'); } catch {}
+        paidBtn.textContent = 'Submitting…';
+
+  const DO_TIMEOUT_MS = 10000; // overall guard; individual steps also have timeouts
+
+        const doConfirm = async () => {
+          console.log('[checkout] doConfirm start', { ref: data.ref, orderId: data.orderId || null });
+          // If we don't have an orderId yet, try to look it up by reference for this user
+          if (!data.orderId && data.ref) {
+            try {
+              const uid = await getUserIdFast();
+              if (!uid) { alert('Please log in to confirm your payment.'); throw new Error('not-logged-in'); }
+              const { data: found } = await supabase
+                .from('orders')
+                .select('id, status')
+                .eq('eft_reference', data.ref)
+                .eq('user_id', uid)
+                .order('created_at', { ascending: false })
+                .limit(1);
+              if (Array.isArray(found) && found[0]?.id) {
+                data.orderId = found[0].id;
+                try { sessionStorage.setItem('eft:last', JSON.stringify(data)); } catch {}
+                console.log('[checkout] found existing order by ref', { orderId: data.orderId });
+              }
+            } catch {}
+          }
+          // If no order exists yet, create it now with status 'pending'
+          if (!data.orderId) {
+            try {
+              const uid = await getUserIdFast();
+              if (!uid) { alert('Please log in to confirm your payment.'); throw new Error('not-logged-in'); }
+              const insertPayload = {
+                status: 'pending',
+                total_price: Number(data.amountValue ?? 0),
+                quantity: Number(data.itemCount ?? 1),
+                eft_reference: data.ref,
+                user_id: uid,
+                user_email: (await supabase.auth.getUser()).data?.user?.email || null
+              };
+              console.log('[checkout] creating order', insertPayload);
+              const ins = await withTimeout(
+                supabase.from('orders').insert([insertPayload]).select('id').single(),
+                5000,
+                'orders-insert'
+              );
+              if (ins.error) {
+                // If duplicate reference, try fetch existing order by ref and proceed
+                try {
+                  const { data: found } = await supabase
+                    .from('orders')
+                    .select('id')
+                    .eq('eft_reference', data.ref)
+                    .eq('user_id', uid)
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+                  if (Array.isArray(found) && found[0]?.id) {
+                    data.orderId = found[0].id;
+                    console.log('[checkout] using duplicate-existing order', { orderId: data.orderId });
+                  } else {
+                    throw ins.error;
+                  }
+                } catch (e) {
+                  throw ins.error;
+                }
+              } else {
+                data.orderId = ins.data?.id;
+                console.log('[checkout] created order', { orderId: data.orderId });
+              }
+              try { sessionStorage.setItem('eft:last', JSON.stringify(data)); } catch {}
+            } catch (e) {
+              alert('Could not create your order. Please try again.');
+              throw e;
+            }
+          }
+          // Ensure status is 'pending' (idempotent)
+          try {
+            console.log('[checkout] updating order to pending', { orderId: data.orderId });
+            await withTimeout(
+              supabase.from('orders').update({ status: 'pending' }).eq('id', data.orderId),
+              4000,
+              'orders-update'
+            );
+          } catch (e) {
+            console.warn('[checkout] update pending timed out/failed, continuing', e?.message || e);
+          }
+          // Snapshot purchased items into order_items (so admin can email links)
+          try {
+            const snapshotRows = (currentItems || []).map(it => ({
+              order_id: data.orderId,
+              product_id: String(it.product_id || it.id),
+              product_name: it.name || 'Product',
+              image_urls: it.image_urls || ''
+            }));
+            if (snapshotRows.length) {
+              await withTimeout(
+                supabase.from('order_items').insert(snapshotRows),
+                6000,
+                'order-items-insert'
+              );
+              console.log('[checkout] order_items inserted', { count: snapshotRows.length });
+            }
+          } catch (e) {
+            console.warn('[checkout] order_items snapshot failed (continuing):', e?.message || e);
+          }
+          // Clean up the user's current cart and close it
+          try {
+            const cartId = await getActiveCartId();
+            if (cartId) {
+              console.log('[checkout] clearing cart after confirm', { cartId });
+              await withTimeout(supabase.from('cart_items').delete().eq('cart_id', cartId), 4000, 'cart-items-delete');
+              await withTimeout(supabase.from('carts').update({ status: 'checked_out' }).eq('id', cartId), 4000, 'carts-update');
+            }
+          } catch (e) {
+            console.warn('Cart cleanup after confirm payment failed:', e?.message || e);
+          }
+          // Clear local/session caches and UI
+          try { sessionStorage.removeItem('cart:last'); } catch {}
+          console.log('[checkout] cleared cart cache');
+          try { currentItems = []; render(currentItems); } catch {}
+          try {
+            const badge = document.getElementById('cartCount');
+            if (badge) badge.textContent = '0';
+            window.dispatchEvent(new CustomEvent('cart:changed'));
+          } catch {}
+          // Hide the button, show a toast, and navigate back to shop
+          paidBtn.style.display = 'none';
+          try { showToast('Thanks! We\'ll review your payment shortly.', { variant: 'success', duration: 3500 }); } catch {}
+          console.log('[checkout] navigate back to #shop');
+          location.hash = '#shop';
+        };
+
+        try {
+          // Race the confirmation flow against a timeout so the UI never hangs
+          await Promise.race([
+            doConfirm(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('confirm-timeout')), DO_TIMEOUT_MS))
+          ]);
+        } catch (e) {
+          // Even if there was an error or timeout, proceed to shop so the user is not blocked
+          console.warn('Confirm payment encountered an error:', e?.message || e);
+          try { showToast('We\'re processing your confirmation. You can continue shopping.', { variant: 'info', duration: 3500 }); } catch {}
+          location.hash = '#shop';
+        } finally {
+          try { paidBtn.removeAttribute('aria-busy'); } catch {}
+          paidBtn.disabled = false;
+          paidBtn.textContent = old;
+          delete paidBtn.dataset.submitting;
+        }
+      });
+    }
+
+    const backBtn = document.getElementById('eftpBack');
+    if (backBtn && !backBtn.dataset.bound) {
+      backBtn.dataset.bound = '1';
+      backBtn.addEventListener('click', () => { location.hash = '#shop'; });
+    }
+  } catch {}
+}
+
+// Shared checkout starter used by direct and fallback bindings
+async function startCheckout(checkoutBtn) {
+  console.log('[checkout] startCheckout invoked');
+  // Prevent double click submissions
+  if (checkoutBtn.dataset.submitting === '1') return;
+  checkoutBtn.dataset.submitting = '1';
+  const oldText = checkoutBtn.textContent;
+  checkoutBtn.disabled = true;
+  checkoutBtn.textContent = 'Preparing EFT…';
+  try {
+    // Basic validation
+    if (!Array.isArray(currentItems) || currentItems.length === 0) {
+      alert('Your cart is empty.');
+      return;
+    }
+
+    // Build total and unique reference (do this before any awaits)
+    const total = currentItems.reduce((sum, it) => sum + Number(it.price || 0), 0);
+    const totalQty = currentItems.length;
+    const short = Math.random().toString(36).slice(2, 8).toUpperCase();
+    const ref = `TAA-${short}`;
+    console.log('[checkout] prepared EFT data', { ref, total, totalQty });
+
+    // Populate EFT page fields immediately
+    const fmt = new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR' });
+    const bd = window.BANK_DETAILS || {};
+    const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    setVal('eftpRef', ref);
+    setVal('eftpAmount', fmt.format(total));
+    setVal('eftpAccName', bd.accountName || '');
+    setVal('eftpBank', bd.bankName || '');
+    setVal('eftpAccNo', bd.accountNumber || '');
+    setVal('eftpBranch', bd.branchCode || '');
+    setVal('eftpType', bd.type || '');
+    try {
+      sessionStorage.setItem('eft:last', JSON.stringify({
+        ref,
+        amount: fmt.format(total),
+        amountValue: Number(total.toFixed(2)),
+        itemCount: totalQty,
+        bank: bd
+      }));
+      console.log('[checkout] wrote eft:last to sessionStorage');
+    } catch {}
+
+    // Navigate right away so the user sees progress
+    console.log('[checkout] navigating to #eft');
+    location.hash = '#eft';
+
+    // Optionally ensure they are logged in for the next step; if not, prompt without blocking navigation
+    try {
+      const { data: s } = await supabase.auth.getSession();
+      if (!s?.session) {
+        console.log('[checkout] no session; prompting login modal');
+        setTimeout(() => { document.getElementById('loginBtn')?.click(); }, 200);
+      }
+    } catch {}
+  } catch (err) {
+    console.warn('[checkout] Checkout error', err);
+    alert('Checkout error: ' + (err?.message || err));
+  } finally {
+    try {
+      checkoutBtn.disabled = false;
+      checkoutBtn.textContent = oldText;
+      delete checkoutBtn.dataset.submitting;
+      console.log('[checkout] checkout button restored');
+    } catch {}
+  }
 }

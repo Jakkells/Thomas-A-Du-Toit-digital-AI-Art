@@ -5,12 +5,12 @@ import { setAdminNav } from './nav.js';
 import { setMaintenanceAccess, initMaintenance } from './maintenance.js';
 import { initProducts } from './products.js';
 import { loadProductDetailFromHash } from './productDetail.js';
-import { initCartView, loadCartPage } from './cartView.js';
+import { initCartView, loadCartPage, loadPendingPayments, loadEftPageFromCache } from './cartView.js';
 
 let isAdmin = false;
 
 function showSection(sectionId) {
-  const sections = ['shop', 'about', 'contact', 'maintenance', 'product', 'cart'];
+  const sections = ['shop', 'about', 'contact', 'maintenance', 'product', 'cart', 'pending', 'eft'];
   sections.forEach(id => {
     const el = document.getElementById(id) || document.querySelector(`section#${id}`);
     if (el) el.classList.toggle('hidden', id !== sectionId);
@@ -37,6 +37,14 @@ function route() {
   setAdminNav(isAdmin);
   if (section === 'product') loadProductDetailFromHash();
   if (section === 'cart') loadCartPage();
+  if (section === 'pending') {
+    if (!isAdmin) { location.hash = '#shop'; return; }
+    loadPendingPayments();
+  }
+  if (section === 'eft') {
+    // Populate from cache if user refreshed or deep-linked
+    loadEftPageFromCache();
+  }
 }
 
 function initMobileMenu() {

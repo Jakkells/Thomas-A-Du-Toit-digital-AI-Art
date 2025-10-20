@@ -3,6 +3,7 @@ export function setAdminNav(isAdmin) {
   if (!menu) return;
 
   let li = document.getElementById('nav-maintenance');
+  let liPending = document.getElementById('nav-pending');
 
   if (isAdmin) {
     if (!li) {
@@ -13,7 +14,17 @@ export function setAdminNav(isAdmin) {
     } else {
       li.style.display = '';
     }
+
+    if (!liPending) {
+      liPending = document.createElement('li');
+      liPending.id = 'nav-pending';
+      liPending.innerHTML = '<a href="#pending">Pending</a>';
+      menu.appendChild(liPending);
+    } else {
+      liPending.style.display = '';
+    }
   } else if (li) {
     li.remove();
+    if (liPending) liPending.remove();
   }
 }

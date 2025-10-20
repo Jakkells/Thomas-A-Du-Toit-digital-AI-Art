@@ -215,8 +215,46 @@
         <div id="cartList" class="cart-list"></div>
         <div class="cart-footer">
           <div class="cart-total">Total: <span id="cartTotal">R0.00</span></div>
-          <button class="btn btn-solid" id="checkoutBtn" disabled>Checkout</button>
+          <button class="btn btn-solid" id="checkoutBtn" type="button" disabled>Checkout</button>
         </div>
+      </div>
+    </section>
+
+    <!-- EFT Instructions page -->
+    <section id="eft" class="hidden">
+      <a href="#shop" class="pd-back" aria-label="Back to shop">←</a>
+      <div class="cart-container">
+        <h2>Manual EFT Instructions</h2>
+        <p>Please complete an EFT using the details below. Use the exact Reference so we can match your payment.</p>
+        <div class="form-group"><label>Reference</label><input id="eftpRef" type="text" readonly /></div>
+        <div class="form-group"><label>Amount</label><input id="eftpAmount" type="text" readonly /></div>
+        <div class="form-group"><label>Account Name</label><input id="eftpAccName" type="text" readonly data-editable="1" /></div>
+        <div class="form-group"><label>Bank</label><input id="eftpBank" type="text" readonly data-editable="1" /></div>
+        <div class="form-group"><label>Account Number</label><input id="eftpAccNo" type="text" readonly data-editable="1" /></div>
+        <div class="form-group"><label>Branch Code</label><input id="eftpBranch" type="text" readonly data-editable="1" /></div>
+        <div class="form-group"><label>Account Type</label><input id="eftpType" type="text" readonly data-editable="1" /></div>
+        <div class="form-group"><label>Instructions</label>
+          <ol style="padding-left:18px;">
+            <li>Log into your banking app.</li>
+            <li>Add a recipient using the bank details above.</li>
+            <li>Pay the Amount and use the exact Reference provided.</li>
+            <li>We’ll confirm your order as soon as the funds reflect.</li>
+          </ol>
+        </div>
+        <div class="cart-footer" style="gap:8px;">
+          <button id="eftpEdit" class="btn" type="button">Edit fields</button>
+          <button id="eftpPaid" class="btn btn-solid" type="button">Confirm payment</button>
+          <button id="eftpBack" class="btn btn-solid" type="button">Back to Shop</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pending Payments (admin only) -->
+    <section id="pending" class="hidden">
+      <a href="#shop" class="pd-back" aria-label="Back to shop">←</a>
+      <div class="pending-container">
+        <h2>Pending Payments</h2>
+        <div id="pendingList" class="pending-list" style="display:grid;gap:12px;"></div>
       </div>
     </section>
   </main>
@@ -330,6 +368,28 @@
       </div>
       <div class="modal-footer">
         <button id="resetSubmit" type="submit" form="resetForm" class="btn btn-solid">Update Password</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manual EFT Instructions Modal -->
+  <div id="eftModal" class="modal">
+    <div class="modal-content">
+      <button id="closeEft" class="modal-close" aria-label="Close">×</button>
+      <h2>Manual EFT Payment</h2>
+      <div class="modal-body">
+        <p>Please make an EFT using the bank details below. Use the Reference exactly as shown so we can match your payment.</p>
+        <div class="form-group"><label>Reference</label><input id="eftRef" type="text" readonly /></div>
+        <div class="form-group"><label>Amount</label><input id="eftAmount" type="text" readonly /></div>
+        <div class="form-group"><label>Account Name</label><input id="eftAccName" type="text" readonly /></div>
+        <div class="form-group"><label>Bank</label><input id="eftBank" type="text" readonly /></div>
+        <div class="form-group"><label>Account Number</label><input id="eftAccNo" type="text" readonly /></div>
+        <div class="form-group"><label>Branch Code</label><input id="eftBranch" type="text" readonly /></div>
+        <div class="form-group"><label>Account Type</label><input id="eftType" type="text" readonly /></div>
+      </div>
+      <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;">
+        <button id="copyEftDetails" class="btn">Copy details</button>
+        <button id="okEft" class="btn btn-solid">Done</button>
       </div>
     </div>
   </div>

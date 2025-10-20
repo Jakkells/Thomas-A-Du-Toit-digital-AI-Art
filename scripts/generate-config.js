@@ -19,7 +19,6 @@ const configJs = `// Generated at build-time. Do NOT commit secrets to the repo.
   `window.SUPABASE_URL = ${JSON.stringify(URL)};\n` +
   `window.SUPABASE_KEY = ${JSON.stringify(KEY)};\n`;
 fs.writeFileSync(path.join(outDir, 'config.js'), configJs, 'utf8');
-console.log('[generate-config] Wrote public/config.js');
 
 // Helper to copy files/dirs
 function copyFile(src, destDir) {
@@ -27,7 +26,7 @@ function copyFile(src, destDir) {
   fs.mkdirSync(destDir, { recursive: true });
   const dest = path.join(destDir, path.basename(src));
   fs.copyFileSync(src, dest);
-  console.log(`[generate-config] Copied ${src} -> ${dest}`);
+  
 }
 
 function copyDir(srcDir, destDir) {
@@ -43,7 +42,7 @@ function copyDir(srcDir, destDir) {
       fs.copyFileSync(s, d);
     }
   }
-  console.log(`[generate-config] Copied dir ${srcDir} -> ${destDir}`);
+  
 }
 
 // Copy static assets into public/

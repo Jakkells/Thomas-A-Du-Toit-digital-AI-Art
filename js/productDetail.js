@@ -27,12 +27,25 @@ async function handleAddToCartClick(e) {
     const slowTip = setTimeout(() => {
       try { if (btn.getAttribute('aria-busy') === 'true') btn.textContent = 'Almost there…'; } catch {}
     }, 1200);
-    await addToCart(prod, 1);
-    clearTimeout(slowTip);
-    showToast('Added to cart');
+    // Add a hard timeout so the button never gets stuck on slow/unstable networks
+    const TIMEOUT_MS = 7000;
+    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('add-to-cart-timeout')), TIMEOUT_MS));
+    const result = await Promise.race([addToCart(prod, 1), timeout]);
+    if (result?.alreadyInCart) {
+      showToast('Already added to cart', { variant: 'info', duration: 2000 });
+    } else {
+      showToast('Added to cart');
+    }
   } catch (e2) {
-    showToast('Failed to add', { variant: 'error', duration: 2500 });
+    const msg = String(e2?.message || e2 || '').toLowerCase();
+    if (msg.includes('timeout')) {
+      // Graceful fallback on slow links
+      showToast('Still working… please check your cart in a moment.', { variant: 'info', duration: 3500 });
+    } else {
+      showToast('Failed to add', { variant: 'error', duration: 2500 });
+    }
   } finally {
+    try { clearTimeout(slowTip); } catch {}
     setButtonLoading(btn, false);
     delete btn.dataset.adding;
   }

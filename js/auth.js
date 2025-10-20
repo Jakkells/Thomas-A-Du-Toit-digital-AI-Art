@@ -4,11 +4,8 @@ import { ensureProfile } from './profile.js';
 import { setAdminNav } from './nav.js';
 import { getFullNumber, isValidNumber } from './phoneInput.js';
 
-// Minimal logger so the app doesn't break if debug helpers were removed.
-// Change to a no-op later by setting authDebug = () => {} if you want silence.
-function authDebug(...args) {
-  try { console.log('[auth]', ...args); } catch {}
-}
+// Minimal logger (no-op in production)
+function authDebug() { /* no-op */ }
 
 // Guard so we don't open the reset modal twice
 let _resetModalOpened = false;

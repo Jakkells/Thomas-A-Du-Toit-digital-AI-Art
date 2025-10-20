@@ -136,14 +136,12 @@ function preloadImage(src) {
 
 export function productCard(p, { deletable = false } = {}) {
   const img = firstImage(p.image_urls);
-  const out = (p.stock ?? 0) <= 0;
   const a = document.createElement('a');
   a.href = `#product?id=${encodeURIComponent(p.id)}`; // route to detail
   a.className = 'product-card';
   a.innerHTML = `
     <div class="thumb">
       <img src="${img}" alt="${(p.name || 'Product').replace(/"/g, '&quot;')}" loading="lazy"/>
-      ${out ? '<span class="badge-out">Out of stock</span>' : ''}
     </div>
     <div class="info">
       <div class="name">${p.name || ''}</div>
@@ -185,7 +183,6 @@ export async function loadProducts() {
   }, 9000);
 
   // REST-first fetch with timeout so UI doesn't hang forever on network stalls
-  console.log('[products] loadProducts: REST fetch start');
   let data, error, httpStatus = 0, httpDetail = '';
   async function restFetch(orderClause) {
     const fields = 'id,name,item_type,category,description,image_urls,stock,price,created_at';
@@ -204,7 +201,7 @@ export async function loadProducts() {
       const tok = s?.session?.access_token;
       if (tok) headers['authorization'] = `Bearer ${tok}`;
     } catch {}
-    console.log('[products] REST GET', url);
+    
     const controller = new AbortController();
     const to = setTimeout(() => controller.abort('rest-timeout'), 8000);
     const res = await fetch(url, { headers, signal: controller.signal });
