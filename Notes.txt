@@ -20,3 +20,8 @@ removing products from cart
 
 Tests same for mobile
 --------------------------------------------------
+
+
+bugs
+when someone signs in it doesnt get their cart info so cart says 0 untill they go into it.
+When some clicks checkout it says to log in to do this even if you are loged in.

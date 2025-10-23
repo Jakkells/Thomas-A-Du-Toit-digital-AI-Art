@@ -276,44 +276,114 @@ export async function loadPendingPayments() {
         alert('Reference copied');
       }
       if (action === 'mark-paid' || action === 'mark-cancelled') {
-        const id = Number(btn.dataset.id);
-        const userId = btn.dataset.user || null;
-  const status = action === 'mark-paid' ? 'paid' : 'cancelled';
-  const patch = { status };
-        const { error } = await supabase.from('orders').update(patch).eq('id', id).in('status', ['pending','failed']);
-        if (error) { alert('Update failed'); return; }
+        console.log('[pending] action click', action, btn?.dataset);
+        // Prevent double-clicks
+        if (btn.dataset.busy === '1') return;
+        btn.dataset.busy = '1';
+        const oldText = btn.textContent;
+        const isPaid = action === 'mark-paid';
+        // Simple text change only, as requested
+        btn.textContent = isPaid ? 'Checking…' : 'Updating…';
+        btn.disabled = true;
+        try { btn.setAttribute('aria-busy', 'true'); } catch {}
 
-        // If marked paid, trigger delivery email via API (best-effort)
-        if (status === 'paid') {
-          try {
-            const apiBase = (window.API_BASE_URL || '').replace(/\/+$/, '');
-            const url = apiBase ? `${apiBase}/api/sendOrderEmail` : '/api/sendOrderEmail';
-            await fetch(url, {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ orderId: id })
-            });
-          } catch {}
-        }
+        // No Gmail draft prompt; sending handled by server via SMTP
 
-        // If paid: close user's active cart(s) and clear their items
-        if (status === 'paid' && userId) {
+        // Yield to allow the label to paint, then do the work
+        setTimeout(async () => {
           try {
-            const { data: carts } = await supabase
-              .from('carts')
-              .select('id')
-              .eq('user_id', userId)
-              .eq('status', 'active');
-            const ids = (carts || []).map(c => c.id);
-            if (ids.length) {
-              await supabase.from('cart_items').delete().in('cart_id', ids);
-              await supabase.from('carts').update({ status: 'checked_out' }).in('id', ids);
-            }
-          } catch (e) {
-            console.warn('Cart close/clear failed:', e?.message || e);
+          const id = Number(btn.dataset.id);
+          const userId = btn.dataset.user || null;
+          const status = isPaid ? 'paid' : 'cancelled';
+          const patch = { status };
+          const { error } = await supabase
+            .from('orders')
+            .update(patch)
+            .eq('id', id)
+            .in('status', ['pending','failed']);
+          if (error) {
+            console.warn('[pending] order update failed', error);
+            alert('Update failed');
+            throw error;
           }
-        }
-        loadPendingPayments();
+
+          // If marked paid, open a Gmail draft (server returns preview text and performs cleanup)
+          if (isPaid) {
+            try {
+              const apiBase = (window.API_BASE_URL || '').replace(/\/+$/, '');
+              const url = apiBase ? `${apiBase}/api/sendOrderEmail` : '/api/sendOrderEmail';
+              let authHeader = {};
+              try {
+                const { data: sess } = await supabase.auth.getSession();
+                const token = sess?.session?.access_token;
+                if (token) authHeader = { Authorization: `Bearer ${token}` };
+              } catch {}
+
+              // Open a blank window synchronously to avoid popup blockers
+              let gmailWin = null;
+              try { gmailWin = window.open('about:blank'); } catch {}
+
+              const resp = await fetch(url, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json', ...authHeader },
+                body: JSON.stringify({ orderId: id, preview: true })
+              });
+              console.log('[pending] sendOrderEmail preview status', resp.status);
+              if (resp.ok) {
+                const j = await resp.json();
+                console.log('[pending] sendOrderEmail preview ok', j);
+                const to = j?.to || '';
+                const su = j?.subject || 'Your order';
+                const body = j?.text || '';
+                const params = new URLSearchParams();
+                if (to) params.set('to', to);
+                params.set('su', su);
+                params.set('body', body);
+                params.set('view', 'cm');
+                params.set('fs', '1');
+                const gmailUrl = `https://mail.google.com/mail/?${params.toString()}`;
+                try {
+                  if (gmailWin && !gmailWin.closed) gmailWin.location.href = gmailUrl;
+                  else window.location.href = gmailUrl;
+                } catch {
+                  try { window.location.href = gmailUrl; } catch {}
+                }
+                try { showToast('Draft opened in Gmail. If not, check your popup blocker.', { variant: 'info', duration: 4000 }); } catch {}
+              } else {
+                let errText = '';
+                let j = null;
+                try { j = await resp.json(); console.warn('sendOrderEmail preview failed:', j); errText = j?.error || JSON.stringify(j); }
+                catch { try { errText = await resp.text(); } catch {} }
+                if (gmailWin && !gmailWin.closed) try { gmailWin.close(); } catch {}
+                if (resp.status === 404 && j?.error !== 'order-not-found') {
+                  showToast('API /api/sendOrderEmail not found. Make sure the dev server is running (vercel dev).', { variant: 'error', duration: 4500 });
+                } else {
+                  showToast('Could not prepare Gmail draft: ' + (errText || resp.statusText), { variant: 'error', duration: 4500 });
+                }
+              }
+            } catch (e) {
+              console.warn('sendOrderEmail request error:', e?.message || e);
+            }
+          }
+            // Notify success (for paid, we already show draft/open toasts; keep message minimal)
+            try {
+              if (isPaid) {
+                showToast('Order marked as paid.', { variant: 'success', duration: 2000 });
+              } else {
+                showToast('Order cancelled.', { variant: 'info', duration: 2500 });
+              }
+            } catch {}
+            // Refresh list (also restores buttons)
+            loadPendingPayments();
+          } catch (err) {
+            // Restore UI on error
+            try { btn.removeAttribute('aria-busy'); } catch {}
+            btn.disabled = false;
+            btn.textContent = oldText;
+            delete btn.dataset.busy;
+            try { showToast('Update failed. Please try again.', { variant: 'error', duration: 3000 }); } catch {}
+          }
+        }, 0);
       }
     });
   }
@@ -460,7 +530,7 @@ export function loadEftPageFromCache() {
         const old = paidBtn.textContent;
         paidBtn.disabled = true;
         try { paidBtn.setAttribute('aria-busy', 'true'); } catch {}
-        paidBtn.textContent = 'Submitting…';
+        paidBtn.textContent = 'Checking...';
 
   const DO_TIMEOUT_MS = 10000; // overall guard; individual steps also have timeouts
 

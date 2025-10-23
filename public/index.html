@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Thomas AI Art</title>
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="https://dzfpyifozngxttzeadua.supabase.co/storage/v1/object/public/pictures/Gemini_Generated_Image_20l5yk20l5yk20l5-removebg-preview.png" />
+  <link rel="shortcut icon" href="https://dzfpyifozngxttzeadua.supabase.co/storage/v1/object/public/pictures/Gemini_Generated_Image_20l5yk20l5yk20l5-removebg-preview.png" />
+  <!-- Performance hints -->
+  <link rel="preconnect" href="https://dzfpyifozngxttzeadua.supabase.co" crossorigin>
+  <link rel="dns-prefetch" href="//dzfpyifozngxttzeadua.supabase.co">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="dns-prefetch" href="//cdn.jsdelivr.net">
+  <link rel="modulepreload" href="js/main.js">
+  <link rel="modulepreload" href="js/auth.js">
+  <link rel="modulepreload" href="js/products.js">
+  <link rel="modulepreload" href="js/productDetail.js">
+  <link rel="modulepreload" href="js/cart.js">
+  <link rel="modulepreload" href="js/cartView.js">
+  <link rel="modulepreload" href="js/nav.js">
+  <link rel="modulepreload" href="js/maintenance.js">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <script>
+    // Capture recovery intent ASAP (before Supabase JS removes URL hash)
+    (function () {
+      try {
+        var h = window.location.hash || '';
+        if (!h) return;
+        var q = h.charAt(0) === '#' ? h.slice(1) : h;
+        var hasRecovery = /(^|&)type=recovery(&|$)/i.test(q) || /recovery/i.test(q);
+        if (hasRecovery) sessionStorage.setItem('sb:recovery', '1');
+        // Also capture email confirmation intent so we can show a helpful popup after redirect
+        var hasConfirm = /(^|&)type=signup(&|$)/i.test(q) || /confirm|confirmed|verification/i.test(q);
+        if (hasConfirm) sessionStorage.setItem('sb:confirmed', '1');
+      } catch (e) { /* noop */ }
+    })();
+  </script>
+  <div id="globalMsg" style="display:none;color:red;text-align:center;margin:16px 0;font-size:1em;"></div>
+
+  <header class="header">
+    <div class="header-container" style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button id="menuToggle" class="menu-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="siteNav">☰</button>
+        <a href="#" class="logo">Thomas AI Art</a>
+      </div>
+
+      <nav id="siteNav">
+        <ul class="nav-menu" style="list-style:none;display:flex;gap:16px;margin:0;padding:0;">
+          <li><a href="#shop">Shop</a></li>
+          <li><a href="#about">About</a></li>
+          <li><a href="#contact">Contact</a></li>
+        </ul>
+      </nav>
+
+      <!-- Header actions -->
+      <div class="header-actions">
+        <button id="cartBtn" class="icon-btn cart-btn" title="Cart" aria-label="Cart">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zm10 0c-1.1 0-1.99.9-1.99 2S15.9 22 17 22s2-.9 2-2-.9-2-2-2zM7.16 14l.03.01L7.9 16h8.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49A1 1 0 0 0 21.8 7H6.21L5.27 5H2v2h2l3.6 7z"/>
+          </svg>
+          <span id="cartCount" class="badge">0</span>
+        </button>
+
+        <!-- Change both to outline-light -->
+        <div id="authControls" class="auth-buttons">
+          <button class="btn btn-outline-light" id="loginBtn" type="button">Login</button>
+          <button class="btn btn-outline-light" id="signupBtn" type="button">Sign Up</button>
+          <button id="logoutBtn" class="btn btn-outline-light" type="button">Logout</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-content">
+    <section id="shop">
+      <div class="products-toolbar" style="display:flex;gap:12px;align-items:center;justify-content:flex-end;margin:8px 0 12px;flex-wrap:wrap;">
+        <div class="toolbar-group" style="display:flex;align-items:center;gap:6px;">
+          <label for="filterCategory" style="font-size:.9em;">Category</label>
+          <select id="filterCategory" style="padding:6px 8px; min-width:160px;">
+            <option value="">All</option>
+          </select>
+        </div>
+        <div class="toolbar-group" style="display:flex;align-items:center;gap:6px;">
+          <label for="filterType" style="font-size:.9em;">Type</label>
+          <select id="filterType" style="padding:6px 8px; min-width:160px;">
+            <option value="">All</option>
+          </select>
+        </div>
+        <div class="toolbar-group" style="display:flex;align-items:center;gap:6px;">
+          <label for="sortPrice" style="font-size:.9em;">Sort</label>
+          <select id="sortPrice" style="padding:6px 8px; min-width:160px;">
+            <option value="">Default</option>
+            <option value="price.asc">Price: Low to High</option>
+            <option value="price.desc">Price: High to Low</option>
+          </select>
+        </div>
+      </div>
+      <div id="productsGrid" class="products-grid"></div>
+    </section>
+
+    <section id="about">
+      <div class="about-content">
+        <h2>About</h2>
+        <p>A digital artist exploring the dynamic intersection of technology and creativity. 
+          Through innovative use of digital tools and techniques, 
+          Thomas crafts immersive experiences that challenge perceptions and inspire new perspectives. 
+          His work reflects a passion for pushing boundaries and exploring the limitless possibilities 
+          of digital art.</p>
+      </div>
+    </section>
+
+    <section id="contact">
+      <div class="contact-content">
+        <div class="contact-name">Thomas A Du Toit</div>
+        <a class="contact-phone" href="tel:+27665721234">+27 66 572 1234</a>
+      </div>
+    </section>
+
+    <section id="maintenance" class="maintenance-section">
+      <div id="productsGridMaintenance" class="products-grid"></div>
+    </section>
+
+    <button id="fabAddProduct" class="fab" title="Add Product">+</button>
+
+    <div id="productModal" class="modal">
+      <div class="modal-content">
+        <button id="closeProductModal" class="modal-close" aria-label="Close">×</button>
+        <h2>Add Product</h2>
+        <form id="productForm">
+          <div class="form-group">
+            <label for="prodName">Item name</label>
+            <input type="text" id="prodName" required />
+          </div>
+          <div class="form-group">
+            <label for="prodType">Item type</label>
+            <input type="text" id="prodType" required />
+          </div>
+
+          <div class="form-group">
+            <label for="prodCategory">Category</label>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <select id="prodCategory" style="flex:1; min-width: 0;" required>
+                <option value="" disabled selected hidden></option>
+              </select>
+              <button type="button" id="addCategoryBtn" class="btn" title="Add category" aria-label="Add category" style="width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #000;background:#000;color:#fff;border-radius:8px;font-weight:800;font-size:22px;">+</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="prodDesc">Description</label>
+            <textarea id="prodDesc" rows="4" placeholder="Write a short description..." required></textarea>
+          </div>
+
+          <!-- Dropzone -->
+          <div class="form-group">
+            <label>Images</label>
+            <div id="imageDropzone" class="dropzone">
+              <div class="dz-instructions">Drag & drop images here or click to select</div>
+              <input id="filePicker" type="file" accept="image/*" multiple hidden />
+              <div id="imagePreview" class="dz-preview"></div>
+            </div>
+            <!-- Hidden field to hold CSV of URLs after upload -->
+            <input type="hidden" id="prodImageUrls" />
+          </div>
+
+          <div class="form-group">
+            <label for="prodStock">Stock</label>
+            <input type="number" id="prodStock" min="0" step="1" value="0" required />
+          </div>
+          <div class="form-group">
+            <label for="prodPrice">Price</label>
+            <input type="number" id="prodPrice" min="0" step="0.01" value="0.00" required />
+          </div>
+          <button type="submit" class="btn btn-solid" style="width:100%;">Save Product</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Product Detail Section -->
+    <section id="product" class="product-detail-section">
+  <a href="#shop" class="pd-back" aria-label="Back to shop">←</a>
+      <div class="pd-layout">
+        <aside id="pdThumbs" class="pd-thumbs"></aside>
+        <div class="pd-image">
+          <!-- Desktop main image -->
+          <img id="pdMainImage" alt="Product image" />
+
+          <!-- Mobile carousel (shown only on small screens via CSS) -->
+          <div id="pdCarousel" class="pd-carousel" aria-label="Product images" aria-live="polite"></div>
+
+          <!-- Mobile arrows -->
+          <button id="pdPrev" class="pd-arrow pd-prev" aria-label="Previous image">‹</button>
+          <button id="pdNext" class="pd-arrow pd-next" aria-label="Next image">›</button>
+        </div>
+        <aside class="pd-info">
+          <h1 id="pdName" class="pd-name">Product</h1>
+          <div id="pdDesc" class="pd-desc"></div>
+          <div id="pdType" class="pd-type"></div>
+          <div class="pd-buy">
+            <button id="pdAddToCart" class="btn btn-solid pd-buy-btn">Add to cart</button>
+            <div id="pdPrice" class="pd-price"></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- Cart page -->
+    <section id="cart" class="cart-section hidden">
+      <a href="#shop" class="pd-back" aria-label="Back to shop">←</a>
+      <div class="cart-container">
+        <h2>Your Cart</h2>
+        <div id="cartList" class="cart-list"></div>
+        <div class="cart-footer">
+          <div class="cart-total">Total: <span id="cartTotal">R0.00</span></div>
+          <button class="btn btn-solid" id="checkoutBtn" type="button" disabled>Checkout</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- EFT Instructions page -->
+    <section id="eft" class="hidden">
+      <a href="#shop" class="pd-back" aria-label="Back to shop">←</a>
+      <div class="cart-container">
+        <h2>Manual EFT Instructions</h2>
+        <p>Please complete an EFT using the details below. Use the exact Reference so we can match your payment.</p>
+        <div class="form-group"><label>Reference</label><input id="eftpRef" type="text" readonly /></div>
+        <div class="form-group"><label>Amount</label><input id="eftpAmount" type="text" readonly /></div>
+        <div class="form-group"><label>Account Name</label><input id="eftpAccName" type="text" readonly data-editable="1" /></div>
+        <div class="form-group"><label>Bank</label><input id="eftpBank" type="text" readonly data-editable="1" /></div>
+        <div class="form-group"><label>Account Number</label><input id="eftpAccNo" type="text" readonly data-editable="1" /></div>
+        <div class="form-group"><label>Branch Code</label><input id="eftpBranch" type="text" readonly data-editable="1" /></div>
+        <div class="form-group"><label>Account Type</label><input id="eftpType" type="text" readonly data-editable="1" /></div>
+        <div class="form-group"><label>Instructions</label>
+          <ol style="padding-left:18px;">
+            <li>Log into your banking app.</li>
+            <li>Add a recipient using the bank details above.</li>
+            <li>Pay the Amount and use the exact Reference provided.</li>
+            <li>We’ll confirm your order as soon as the funds reflect.</li>
+          </ol>
+        </div>
+        <div class="cart-footer" style="gap:8px;">
+          <button id="eftpEdit" class="btn" type="button">Edit fields</button>
+          <button id="eftpPaid" class="btn btn-solid" type="button">Confirm payment</button>
+          <button id="eftpBack" class="btn btn-solid" type="button">Back to Shop</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pending Payments (admin only) -->
+    <section id="pending" class="hidden">
+      <a href="#shop" class="pd-back" aria-label="Back to shop">←</a>
+      <div class="pending-container">
+        <h2>Pending Payments</h2>
+        <div id="pendingList" class="pending-list" style="display:grid;gap:12px;"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Login Modal -->
+  <div id="loginModal" class="modal">
+    <div class="modal-content">
+      <button id="closeLogin" class="modal-close" aria-label="Close">×</button>
+      <h2>Login</h2>
+      <form id="loginForm">
+        <div class="form-group">
+          <label for="loginEmail">Email</label>
+          <input type="email" id="loginEmail" required />
+        </div>
+        <div class="form-group">
+          <label for="loginPassword">Password</label>
+          <div class="password-wrap">
+            <input type="password" id="loginPassword" required />
+            <button type="button" id="showLoginPassword" class="show-password-btn">Show</button>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-solid" style="width:100%;">Login</button>
+        <p class="form-hint" style="margin-top:8px;font-size:.9em;">
+          <a href="#" id="forgotPasswordLink">Forgot your password?</a>
+        </p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add Category Modal -->
+  <div id="categoryModal" class="modal">
+    <div class="modal-content">
+      <button id="closeCategoryModal" class="modal-close" aria-label="Close">×</button>
+      <h2>Add Category</h2>
+      <form id="categoryForm">
+        <div class="form-group">
+          <label for="newCategory">Category name</label>
+          <input type="text" id="newCategory" placeholder="e.g., Landscapes" required />
+        </div>
+        <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;">
+          <button type="button" id="cancelCategory" class="btn" style="border:1px solid #ccc;background:#fff;color:#333;border-radius:8px;padding:8px 12px;">Cancel</button>
+          <button type="submit" class="btn btn-solid" style="background:#000;color:#fff;border-radius:8px;padding:8px 12px;">Add</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Signup Modal -->
+  <div id="signupModal" class="modal">
+    <div class="modal-content">
+      <button id="closeSignup" class="modal-close" aria-label="Close">×</button>
+      <h2>Create Account</h2>
+      <div class="modal-body">
+        <!-- signup form -->
+        <form id="signupForm">
+          <div class="form-group">
+            <label for="signupFirstName">First Name</label>
+            <input type="text" id="signupFirstName" required />
+          </div>
+          <div class="form-group">
+            <label for="signupMiddleName">Middle Name</label>
+            <input type="text" id="signupMiddleName" />
+          </div>
+          <div class="form-group">
+            <label for="signupLastName">Last Name</label>
+            <input type="text" id="signupLastName" required />
+          </div>
+          <div class="form-group">
+            <label for="signupPhoneNumber">Phone Number</label>
+            <input id="signupPhoneNumber" type="tel" required />
+          </div>
+          <div class="form-group">
+            <label for="signupAddress">Address</label>
+            <textarea id="signupAddress" rows="2" required></textarea>
+          </div>
+          <div class="form-group">
+            <label for="signupEmail">Email</label>
+            <input type="email" id="signupEmail" required />
+          </div>
+          <div class="form-group">
+            <label for="signupPassword">Password</label>
+            <div class="password-wrap">
+              <input type="password" id="signupPassword" required />
+              <button type="button" id="showSignupPassword" class="show-password-btn">Show</button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <div class="modal-footer">
+        <button id="signupSubmit" class="btn btn-solid">Sign Up</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reset Password Modal (opened after clicking email link) -->
+  <div id="resetModal" class="modal">
+    <div class="modal-content">
+      <button id="closeReset" class="modal-close" aria-label="Close">×</button>
+      <h2>Reset Password</h2>
+      <div class="modal-body">
+        <form id="resetForm">
+          <div class="form-group">
+            <label for="resetNewPassword">New Password</label>
+            <div class="password-wrap">
+              <input type="password" id="resetNewPassword" required />
+              <button type="button" id="showResetPassword" class="show-password-btn">Show</button>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button id="resetSubmit" type="submit" form="resetForm" class="btn btn-solid">Update Password</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manual EFT Instructions Modal -->
+  <div id="eftModal" class="modal">
+    <div class="modal-content">
+      <button id="closeEft" class="modal-close" aria-label="Close">×</button>
+      <h2>Manual EFT Payment</h2>
+      <div class="modal-body">
+        <p>Please make an EFT using the bank details below. Use the Reference exactly as shown so we can match your payment.</p>
+        <div class="form-group"><label>Reference</label><input id="eftRef" type="text" readonly /></div>
+        <div class="form-group"><label>Amount</label><input id="eftAmount" type="text" readonly /></div>
+        <div class="form-group"><label>Account Name</label><input id="eftAccName" type="text" readonly /></div>
+        <div class="form-group"><label>Bank</label><input id="eftBank" type="text" readonly /></div>
+        <div class="form-group"><label>Account Number</label><input id="eftAccNo" type="text" readonly /></div>
+        <div class="form-group"><label>Branch Code</label><input id="eftBranch" type="text" readonly /></div>
+        <div class="form-group"><label>Account Type</label><input id="eftType" type="text" readonly /></div>
+      </div>
+      <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;">
+        <button id="copyEftDetails" class="btn">Copy details</button>
+        <button id="okEft" class="btn btn-solid">Done</button>
+      </div>
+    </div>
+  </div>
+  <!-- Generated at build-time from environment variables -->
+  <script src="config.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

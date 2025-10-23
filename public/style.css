@@ -1,0 +1,907 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background-color: #ffffff;
+    color: #333;
+    line-height: 1.6;
+}
+
+/* Base fluid type and controls */
+:root {
+  --space: 16px;
+  --radius: 12px;
+}
+html, body { width: 100%; overflow-x: hidden; }
+body { font-size: 16px; line-height: 1.45; }
+h1, .pd-name { font-size: clamp(1.25rem, 2.5vw + 1rem, 1.8rem); }
+.pd-price, .cart-total { font-size: clamp(1.1rem, 2vw + 0.8rem, 1.4rem); }
+button, .btn, input, select, textarea { min-height: 44px; }
+
+/* Header Styles */
+.header {
+    background-color: #000;
+    color: #fff;
+    border-bottom: 1px solid #e5e5e5;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.header-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 70px;
+    gap: 10px !important;
+}
+
+.logo {
+    font-size: 24px;
+    font-weight: 700;
+    color: #fff;
+    text-decoration: none;
+    letter-spacing: -0.5px;
+}
+
+.nav-menu {
+    display: flex;
+    list-style: none;
+    gap: 40px;
+}
+
+.nav-menu a {
+    text-decoration: none;
+    color: #fff;
+    font-weight: 700;
+    font-size: 15px;
+    transition: color 0.2s ease;
+}
+
+.nav-menu a:hover {
+    color: #bbb;
+}
+
+/* Right side of header */
+.header-actions { display: flex; align-items: center; gap: 10px; min-width: 0; }
+
+/* Auth area (where the user name is rendered) */
+#authControls {
+  display: inline-flex;
+  align-items: center;          /* vertical centering */
+  gap: 8px;
+  min-width: 0;                 /* allow contents to shrink */
+}
+
+/* Optional chip style for the displayed name */
+.user-name, #userName {
+  display: inline-flex;
+  align-items: center;          /* vertical centering */
+  line-height: 1;
+  padding: 6px 10px;
+  border-radius: 16px;
+  max-width: 40vw;              /* prevent pushing Logout off-screen */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 8px var(--space);
+  min-width: 0;               /* allow #authControls to shrink inside */
+}
+
+/* Keep Logout button visible and non-shrinking */
+#logoutBtn { flex: 0 0 auto; }
+
+/* Menu toggle button for mobile */
+.menu-toggle {
+  display: none;
+  background: transparent; border: 0; color: #fff; font-size: 24px; padding: 6px 8px; cursor: pointer;
+}
+
+/* Cart icon + badge */
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: #fff;            /* make visible on light headers; change to #fff if your header is dark */
+  cursor: pointer;
+  position: relative;
+  padding: 6px 8px;
+}
+.icon-btn .icon { width: 24px; height: 24px; fill: currentColor; display: block; }
+.icon-btn .badge {
+  position: absolute; top: -4px; right: -4px;
+  background: #ff5252; color: #fff; font-size: 11px;
+  min-width: 18px; height: 18px; border-radius: 9px;
+  display: inline-flex; align-items: center; justify-content: center; padding: 0 5px;
+}
+
+/* Desktop nav */
+#siteNav .nav-menu { display: flex; gap: 16px; }
+/* Hide mobile-only greeting by default (desktop) */
+.nav-greeting { display: none; }
+
+/* Hide nav-menu Logout item by default (only show on mobile) */
+#nav-logout { display: none; }
+/* Hide nav-menu auth items by default (only show on mobile) */
+#nav-login, #nav-signup { display: none; }
+
+/* Mobile nav: slide-over */
+@media (max-width: 768px) {
+  .menu-toggle { display: inline-block; }
+
+  /* Slide-over from LEFT */
+  #siteNav {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;                  /* anchor to left */
+    right: auto;
+    width: min(80vw, 320px);  /* panel width */
+    background: #111;
+    transform: translateX(-100%);   /* hidden off the left */
+    transition: transform .25s ease;
+    z-index: 1200;
+    padding: 60px 16px 16px;
+    overflow-y: auto;
+    box-shadow: 2px 0 20px rgba(0,0,0,.4);
+  }
+
+  body.nav-open #siteNav { transform: translateX(0); }
+
+  #siteNav .nav-menu {
+    display: flex; flex-direction: column; gap: 12px;
+    list-style: none; margin: 0; padding: 0;
+  }
+  #siteNav a { color: #fff; text-decoration: none; font-size: 1.05rem; }
+  /* Friendly greeting at the top of the mobile nav */
+  .nav-greeting {
+    display: block; /* visible only on mobile */
+    color: #bbb;
+    font-weight: 600;
+    padding: 6px 2px 10px;
+  }
+}
+
+/* Main Content */
+.main-content {
+    max-width: 1200px;
+    margin: 0 auto;
+  padding: 60px 20px;
+  position: relative; /* anchor for absolute-positioned back button */
+    text-align: center;
+}
+
+.hero-section {
+    margin-bottom: 80px;
+}
+
+.hero-section h1 {
+    font-size: 48px;
+    font-weight: 300;
+    margin-bottom: 20px;
+    color: #000;
+    letter-spacing: -1px;
+}
+
+.hero-section p {
+    font-size: 18px;
+    color: #666;
+    max-width: 600px;
+    margin: 0 auto 40px;
+}
+
+/* Auth Modal Styles */
+/* Basic modal layout */
+.modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .5);
+    z-index: 1000;
+}
+
+.modal-content {
+  background: #fff;
+  color: #000;
+  max-width: 520px;
+  width: min(520px, 92vw);
+  margin: 8vh auto;
+  border-radius: var(--radius);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  max-height: 90dvh;              /* viewport-aware */
+  overflow: hidden;               /* inner body scrolls */
+}
+
+/* Tweak spacing for the Add Category modal for a cleaner look */
+#categoryModal .modal-content { padding: 16px; }
+#categoryModal h2 { margin: 4px 0 8px; }
+#categoryModal .form-group { margin-top: 6px; }
+#categoryModal .modal-footer { margin-top: 6px; }
+
+.modal-close {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    background: none;
+    border: none;
+    font-size: 22px;
+    cursor: pointer;
+}
+
+.password-wrap {
+    position: relative;
+}
+
+.password-wrap .show-password-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.form-group {
+    margin-bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #e5e5e5;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #000;
+}
+
+.form-submit {
+    width: 100%;
+    background: #000;
+    color: white;
+    border: none;
+    padding: 12px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    margin-bottom: 20px;
+}
+
+.form-submit:hover {
+    background: #333;
+}
+
+.form-switch {
+    text-align: center;
+    color: #666;
+}
+
+.form-switch a {
+    color: #000;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.form-switch a:hover {
+    text-decoration: underline;
+}
+
+/* Products grid + cards */
+.products-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  margin: 16px;
+  min-height: 120px; /* space for loading/empty states */
+}
+.products-grid .grid-loading {
+  grid-column: 1 / -1;
+  padding: 16px;
+  text-align: center;
+  color: #666;
+}
+@media (min-width: 1200px) {
+  .products-grid { grid-template-columns: repeat(6, 1fr); }
+}
+.product-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-decoration: none;
+  color: inherit;
+}
+.product-card .thumb {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #f2f2f2;
+  aspect-ratio: 1 / 1;
+}
+.product-card .thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform .3s ease;
+  display: block;
+}
+.product-card:hover .thumb img { transform: scale(1.05); }
+.product-card .badge-out {
+  position: absolute;
+  left: 8px; top: 8px;
+  background: #000; color: #fff;
+  font-size: 12px; padding: 4px 6px; border-radius: 4px;
+}
+.product-card .info { display: flex; flex-direction: column; gap: 2px; }
+.product-card .name { font-weight: 600; }
+.product-card .type { color: #666; font-size: 0.9em; }
+.product-card .price { font-weight: 700; }
+/* Actions under card info */
+.card-actions { margin-top: 6px; }
+.btn-danger {
+  background: #e53935; color: #fff; border: 2px solid #e53935; border-radius: 8px; padding: 8px 12px; font-weight: 700;
+}
+.btn-danger:hover { background: #c62828; border-color: #c62828; }
+/* Delete button on product cards (only rendered on Maintenance) */
+.product-card .thumb .delete-btn {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0,0,0,.65);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2;
+}
+.product-card .thumb .delete-btn:hover { background: rgba(0,0,0,.85); }
+
+/* Floating Action Button (if not added yet) */
+.fab {
+  position: fixed;
+  right: calc(16px + env(safe-area-inset-right));
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: none;
+  background: #000;
+  color: #fff;
+  display: inline-flex;           /* center content */
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  line-height: 1;                 /* was 0, hides the + */
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0,0,0,.2);
+  z-index: 1100;
+}
+.fab:hover { background: #222; }
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .nav-menu {
+        display: none;
+    }
+
+    .mobile-menu-toggle {
+        display: flex;
+    }
+
+    .search-box {
+        display: none;
+    }
+
+    .hero-section h1 {
+        font-size: 36px;
+    }
+
+  .modal-content {
+        padding: 30px 20px;
+    }
+
+  /* Tighter spacing and stronger truncation on smaller screens */
+  .header-actions { gap: 8px; }
+  #authControls { max-width: 70vw; }
+  .user-name, #userName { max-width: 46vw; padding: 4px 8px; }
+
+  /* Hide header auth buttons on mobile; use hamburger menu items instead */
+  #logoutBtn { display: none !important; }
+  #loginBtn, #signupBtn { display: none !important; }
+  /* Show the nav Logout item if present */
+  #nav-logout { display: list-item; }
+  /* Show nav Login/Sign Up when logged out */
+  #nav-login, #nav-signup { display: list-item; }
+  /* Hide the header username on mobile (use greeting in hamburger instead) */
+  .user-name, #userName { display: none !important; }
+}
+
+/* Ultra-small devices: hide the name if space is extremely constrained */
+@media (max-width: 360px) {
+  .user-name, #userName { display: none; }
+}
+
+/* Route helper */
+.hidden { display: none !important; }
+
+/* About + Contact simple styles */
+.about-content, .contact-content {
+  padding: 32px 16px;
+  text-align: center;
+  color: #000; /* ensure visible on light background */
+}
+.contact-name { font-weight: 700; margin-bottom: 6px; }
+.contact-phone { color: inherit; text-decoration: none; }
+.contact-phone:hover { text-decoration: underline; }
+
+/* Dropzone */
+.dropzone {
+  border: 2px dashed #aaa;
+  border-radius: 10px;
+  padding: 16px;
+  background: #fafafa;
+  cursor: pointer;
+}
+.dropzone.dragover { border-color: #000; background: #f0f0f0; }
+.dz-instructions { color: #666; font-size: 0.95rem; text-align: center; margin-bottom: 10px; }
+.dz-preview { display: flex; flex-wrap: wrap; gap: 8px; }
+.dz-thumb {
+  width: 76px; height: 76px; border-radius: 8px; overflow: hidden; background: #eee; position: relative;
+}
+.dz-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.dz-thumb .dz-remove {
+  position: absolute; top: 4px; right: 4px; width: 20px; height: 20px;
+  border-radius: 50%; border: none; background: rgba(0,0,0,.7); color:#fff; cursor:pointer; font-size:12px; line-height:20px;
+}
+
+/* Product detail layout */
+.product-detail-section { padding: 24px 12px; }
+.pd-back {
+  position: sticky;
+  top: 70px;   /* just under header */
+  left: 0;
+  margin-left: 20px;  /* align with main-content padding */
+  z-index: 60;
+  display: none;       /* hidden by default (desktop) */
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: #000;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 800;
+  font-size: clamp(18px, 2.6vw, 26px); /* bigger arrow */
+  line-height: 1;
+  
+}
+.pd-back:hover { background: #111; }
+.pd-layout {
+  display: grid;
+  grid-template-columns: 92px 1fr 420px;
+  gap: 16px;
+}
+@media (max-width: 900px) {
+  .pd-layout { grid-template-columns: 1fr; }
+  /* Show back arrow only on small screens */
+  .pd-back { display: inline-block; }
+  .pd-thumbs {
+    order: 1;
+    max-height: none; overflow-x: auto; overflow-y: hidden; display: flex; flex-direction: row; gap: 8px;
+  }
+  .pd-thumb { width: 72px; height: 90px; flex: 0 0 auto; }
+  .pd-image { order: 2; min-height: 260px; }
+  .pd-info { order: 3; }
+}
+
+/* Thumbs */
+.pd-thumbs { max-height: 70vh; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+.pd-thumb { width: 72px; height: 96px; border-radius: 8px; overflow: hidden; background: #eee; cursor: pointer; border: 2px solid transparent; }
+.pd-thumb.selected { border-color: #000; }
+.pd-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Base image area */
+.pd-image {
+  position: relative;            /* anchor arrows */
+  background: transparent;       /* remove gray panel */
+  border-radius: 12px;
+  overflow: hidden;
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Main image */
+.pd-image { background: transparent; border-radius: 12px; overflow: hidden; min-height: 300px; display: flex; align-items: center; justify-content: center; }
+.pd-image img { width: 100%; height: auto; object-fit: contain; max-height: 80vh; display: block; }
+
+/* Detail text */
+.pd-name { font-size: 2rem; font-weight: 800; margin: 0; }
+.pd-desc { margin: 0 auto; color: #111; line-height: 1.6; text-align: center; max-width: 60ch; }
+.pd-type { color: #666; margin: 0; font-size: 0.95rem; }
+.pd-price { font-size: 1.4rem; font-weight: 700; margin-top: 4px; }
+.pd-buy { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 0; }
+.pd-buy-btn { padding: 14px 22px; font-size: 1rem; border-radius: 10px; }
+
+/* Even vertical spacing within the info column */
+.pd-info { display: flex; flex-direction: column; gap: 20%; }
+
+/* Modal responsive */
+.modal-content {
+  max-width: 520px;
+  width: min(520px, 92vw);
+  margin: 8vh auto;
+  border-radius: var(--radius);
+}
+@media (max-width: 520px) {
+  .modal-content { width: 96vw; margin: 12vh auto; padding: 14px; }
+}
+
+/* FAB safe-area + touch target */
+.fab {
+  right: calc(16px + env(safe-area-inset-right));
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  width: 60px; height: 60px; font-size: 30px;
+}
+
+/* Forms */
+.form-group { gap: 6px; }
+input, textarea { width: 100%; }
+
+/* Cart page responsive */
+.cart-container { padding: 0 var(--space); }
+.cart-item { grid-template-columns: 64px 1fr auto auto; }
+@media (max-width: 640px) {
+  .cart-item { grid-template-columns: 56px 1fr auto; }
+  .cart-subtotal { font-size: 0.95rem; }
+}
+@media (max-width: 420px) {
+  .cart-item { grid-template-columns: 56px 1fr; }
+  .cart-subtotal { justify-self: end; grid-column: 1 / -1; }
+}
+
+/* Center qty and amount within each cart item */
+#cart .cart-item {
+  grid-template-columns: 56px 1fr;   /* image + details */
+}
+
+#cart .cart-name,
+#cart .cart-qty {
+  text-align: center;
+}
+
+#cart .cart-thumb { margin: 0 auto; }
+
+/* Put subtotal + remove on a full-width row and center them */
+#cart .cart-item > div:last-child {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+}
+
+#cart .cart-subtotal { text-align: center; }
+
+/* Center the footer total under the list */
+#cart .cart-footer {
+  justify-content: center;
+  text-align: center;
+}
+#cart .cart-total { text-align: center; }
+
+/* Remove old head/actions layout */
+
+/* Restore solid button styling (black on white) */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 10px 16px; border-radius: 8px; border: 1px solid transparent;
+  font-weight: 600; cursor: pointer; line-height: 1.2; min-height: 44px;
+}
+.btn-solid { background: #000; color: #fff; border-color: #000; }
+.btn-solid:hover { background: #1a1a1a; border-color: #1a1a1a; }
+.btn-outline { background: transparent; color: #000; border-color: #000; }
+.btn-outline:hover { background: #000; color: #fff; }
+/* Outline button for dark headers */
+.btn-outline-light {
+  background: transparent;
+  color: #fff !important;
+  border: 2px solid #fff !important;
+  border-radius: 8px;
+  padding: 10px 16px;
+}
+.btn-outline-light:hover,
+.btn-outline-light:focus {
+  background: rgba(255,255,255,0.15);
+  color: #fff !important;
+}
+
+/* Force white outline variant (beats .btn-outline hover rules) */
+.header .btn-outline-light,
+.btn-outline-light {
+  color: #fff !important;
+  border: 2px solid #fff !important;
+  background: transparent !important;
+}
+.header .btn-outline-light:hover,
+.btn-outline-light[aria-busy="true"] {
+  background: rgba(255,255,255,0.15) !important;
+  color: #fff !important;
+}
+
+/* Optional: clearer disabled/loading look */
+button[disabled], .btn[aria-busy="true"] { opacity: 0.7; cursor: not-allowed; }
+
+/* Keep header controls aligned and visible on dark bg */
+.header .icon-btn { color: #fff !important; }
+#authControls { display: inline-flex; align-items: center; gap: 8px; }
+.user-name { color: #fff; }
+
+/* During password recovery, hide the header auth controls to avoid confusion */
+body.recovery-active #authControls { visibility: hidden; }
+/* Also hide Maintenance link while recovering (user may be temporarily authed) */
+body.recovery-active #nav-maintenance { display: none !important; }
+
+/* Cart item: compact box with small thumb */
+.cart-list { display: flex; flex-direction: column; gap: 8px; }
+
+.cart-item {
+  display: grid;
+  grid-template-columns: 80px 1fr auto !important;  /* 3 columns */
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  background: #fff;
+}
+
+/* Make image fill its rectangle more */
+.cart-thumb { width: 80px; height: 80px; border-radius: 10px; overflow: hidden; background: #f2f2f2; }
+.cart-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Center the middle column (name, qty, subtotal) */
+.cart-center { justify-self: center; text-align: center; }
+.cart-center .cart-name { font-weight: 600; }
+.cart-center .cart-qty { color: #666; }
+.cart-center .cart-subtotal { font-weight: 700; }
+
+/* Keep Remove at the far right */
+.cart-remove-link {
+  grid-column: 3;
+  justify-self: end;
+  align-self: center;
+  color: #e53935;
+  text-decoration: none;
+  font-weight: 600;
+}
+.cart-remove-link:hover { text-decoration: underline; }
+
+/* Neutralize any previous "last-child spans full width" rules */
+#cart .cart-item > div:last-child { grid-column: auto !important; display: block !important; justify-content: normal !important; }
+
+/* Small phones */
+@media (max-width: 420px) {
+  #cart .cart-item { grid-template-columns: 68px 1fr auto !important; }
+  #cart .cart-thumb { width: 68px; height: 68px; }
+}
+
+/* Single-image product detail (global) */
+.pd-thumbs { display: none !important; width: 0 !important; margin: 0 !important; padding: 0 !important; }
+#pdMainImage { display: block !important; }
+.pd-carousel { display: none !important; }
+.pd-arrow { display: none !important; }
+
+/* Desktop: collapse to 2 columns (image + info) */
+@media (min-width: 901px) {
+  .pd-layout { grid-template-columns: 1fr 420px !important; }
+}
+
+/* Mobile: still single image; no arrows or carousel */
+@media (max-width: 900px) {
+  #pdMainImage { display: block !important; }
+}
+
+/* Carousel container (mobile) */
+.pd-carousel {
+  width: 100%;
+  height: 60vh;
+  max-height: 700px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  display: flex;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  gap: 0;
+}
+
+/* Hide scrollbars (optional) */
+.pd-carousel::-webkit-scrollbar { display: none; }
+.pd-carousel { scrollbar-width: none; -ms-overflow-style: none; }
+
+/* Slides */
+.pd-slide {
+  flex: 0 0 100%;
+  height: 100%;
+  scroll-snap-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;       /* remove gray panel */
+}
+.pd-slide img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* Suppress any leftover children inside .pd-image except the main image */
+.product-detail-section .pd-image > *:not(#pdMainImage) { display: none !important; }
+
+/* Lock page scroll when a modal is open */
+.no-scroll { overflow: hidden; }
+
+/* Modal backdrop */
+#authModal, #loginModal, #signupModal {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.6);
+  display: none; z-index: 2000;
+  overscroll-behavior: contain; /* stop scroll chaining */
+}
+
+/* Modal panel */
+#authModal .modal-content,
+#loginModal .modal-content,
+#signupModal .modal-content {
+  width: min(520px, 96vw);
+  max-height: 90dvh;                 /* dvh fixes mobile browser chrome */
+  margin: 6dvh auto;
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;                  /* content scrolls in .modal-body */
+  display: flex; flex-direction: column;
+}
+
+/* Fix phone input inside modal */
+.iti { width: 100%; }
+/* The dropdown is appended to <body> when using dropdownContainer: document.body.
+  Make sure its container and list are above the modal (z-index ~2000). */
+.iti--container, .iti__container {
+  position: fixed !important; /* ensure overlay above fixed modal */
+  z-index: 99999 !important;
+}
+.iti__country-list {
+  z-index: 100000 !important;
+  background: #fff;
+}
+
+/* Product maintenance modal: allow the panel itself to scroll */
+#productModal .modal-content {
+  max-height: 90dvh;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px; /* restore padding since product modal doesn't use .modal-body */
+  margin: 6dvh auto;
+}
+
+/* Scrollable body (add this wrapper in HTML if not present) */
+.modal-body {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch; /* smooth iOS scroll */
+  padding: 16px;
+}
+
+/* Sticky footer with actions always visible */
+.modal-footer {
+  position: sticky; bottom: 0;
+  background: #fff;
+  padding: 12px 16px;
+  border-top: 1px solid #eee;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+.modal-footer .btn { width: 100%; }
+
+/* Fallback if you can't add .modal-body/.modal-footer wrappers */
+#authModal .modal-content.fallback-scroll,
+#loginModal .modal-content.fallback-scroll,
+#signupModal .modal-content.fallback-scroll {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+}
+
+/* Auth modal spacing tweaks */
+/* Login modal uses direct content (no .modal-body) so give it internal padding */
+#loginModal .modal-content { padding: 16px; }
+#loginModal .modal-content h2 { margin: 0 0 8px; }
+
+/* Signup modal uses a .modal-body; avoid double padding on the container */
+#signupModal .modal-content { padding: 0; }
+#signupModal .modal-content > h2 { padding: 16px 16px 0; margin: 0 0 6px; }
+#signupModal .modal-body { padding: 16px; }
+#signupModal .modal-footer { padding: 12px 16px; }
+
+/* Reset Password modal spacing (mirror Signup so there isn't double padding) */
+#resetModal .modal-content { padding: 0; }
+#resetModal .modal-content > h2 { padding: 16px 16px 0; margin: 0 0 6px; }
+#resetModal .modal-body { padding: 16px; }
+#resetModal .modal-footer { padding: 12px 16px; }
+
+/* Toasts */
+.toast-container {
+  position: fixed;
+  left: 50%; bottom: calc(16px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 8px;
+  z-index: 3000;
+}
+.toast {
+  min-width: 220px; max-width: 90vw;
+  padding: 10px 14px;
+  border-radius: 10px;
+  color: #fff; font-weight: 600;
+  box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  opacity: 0; transform: translateY(8px) scale(.98);
+  transition: opacity .2s ease, transform .2s ease;
+  text-align: center;
+}
+.toast.show { opacity: 1; transform: translateY(0) scale(1); }
+.toast-success { background: #0f9d58; }
+.toast-error { background: #d93025; }
+.toast-info { background: #1a73e8; }
+
+/* Confirm dialog spacing tweaks */
+.confirm-modal { z-index: 4000 !important; }
+.confirm-modal .modal-content {
+  padding: 16px;                 /* consistent inset around title/body/footer */
+}
+.confirm-modal h3 {
+  margin: 0 0 6px;               /* tidy title spacing */
+}
+.confirm-modal .modal-body {
+  padding: 8px 0 0;              /* avoid double padding (modal-content already padded) */
+}
+.confirm-modal .modal-footer {
+  position: static;              /* no sticky for small confirm */
+  padding: 12px 0 0;             /* align with body padding */
+  display: flex; gap: 10px;      /* even gap between buttons */
+  border-top: 1px solid #eee;
+}
+.confirm-modal .modal-footer .btn {
+  width: auto;                   /* override global full-width */
+  flex: 1;                       /* make buttons equal width */
+}

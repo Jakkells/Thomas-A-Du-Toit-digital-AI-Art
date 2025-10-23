@@ -1,52 +1,60 @@
-// Generates a static "public" directory for Vercel with config.js and site assets
-// Uses environment variables for Supabase.
+// Minimal build script for Vercel to satisfy Project settings
+// Copies static assets to ./public so Vercel can serve them when Output Directory is set
 
 const fs = require('fs');
 const path = require('path');
+try { require('dotenv').config(); } catch {}
 
-const URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const KEY = process.env.SUPABASE_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY || '';
+const root = process.cwd();
+const outDir = path.join(root, 'public');
 
-if (!URL || !KEY) {
-  console.warn('[generate-config] Missing SUPABASE_URL or SUPABASE_KEY in environment.');
+function ensureDir(dir) {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
-const outDir = path.join(process.cwd(), 'public');
-fs.mkdirSync(outDir, { recursive: true });
-
-// Write config.js into public/
-const configJs = `// Generated at build-time. Do NOT commit secrets to the repo.\n` +
-  `window.SUPABASE_URL = ${JSON.stringify(URL)};\n` +
-  `window.SUPABASE_KEY = ${JSON.stringify(KEY)};\n`;
-fs.writeFileSync(path.join(outDir, 'config.js'), configJs, 'utf8');
-
-// Helper to copy files/dirs
-function copyFile(src, destDir) {
-  if (!fs.existsSync(src)) return;
-  fs.mkdirSync(destDir, { recursive: true });
-  const dest = path.join(destDir, path.basename(src));
+function copyFile(src, dest) {
+  ensureDir(path.dirname(dest));
   fs.copyFileSync(src, dest);
-  
 }
 
 function copyDir(srcDir, destDir) {
   if (!fs.existsSync(srcDir)) return;
-  fs.mkdirSync(destDir, { recursive: true });
-  for (const entry of fs.readdirSync(srcDir)) {
-    const s = path.join(srcDir, entry);
-    const d = path.join(destDir, entry);
-    const stat = fs.statSync(s);
-    if (stat.isDirectory()) {
-      copyDir(s, d);
-    } else {
-      fs.copyFileSync(s, d);
-    }
+  ensureDir(destDir);
+  for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    const s = path.join(srcDir, entry.name);
+    const d = path.join(destDir, entry.name);
+    if (entry.isDirectory()) copyDir(s, d);
+    else copyFile(s, d);
   }
-  
 }
 
-// Copy static assets into public/
-const root = process.cwd();
-copyFile(path.join(root, 'index.html'), outDir);
-copyFile(path.join(root, 'style.css'), outDir);
-copyDir(path.join(root, 'js'), path.join(outDir, 'js'));
+function main() {
+  ensureDir(outDir);
+  const candidates = ['index.html', 'style.css'];
+  for (const file of candidates) {
+    const src = path.join(root, file);
+    const dest = path.join(outDir, file);
+    if (fs.existsSync(src)) copyFile(src, dest);
+  }
+  copyDir(path.join(root, 'js'), path.join(outDir, 'js'));
+  // Generate a small client-side config for convenience to avoid 404 on <script src="config.js">
+  const cfgDest = path.join(outDir, 'config.js');
+  const supabaseUrl = process.env.SUPABASE_URL || '';
+  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY || '';
+  const bank = {
+    accountName: 'Cindy Du Toit',
+    bankName: 'Nedbank',
+    accountNumber: '2911205359',
+    branchCode: '198765',
+    type: 'Savings',
+  };
+  const cfg = `// Generated at build-time\n` +
+              `window.SUPABASE_URL = ${JSON.stringify(supabaseUrl)};\n` +
+              `window.SUPABASE_KEY = ${JSON.stringify(anonKey)};\n` +
+              `window.BANK_DETAILS = ${JSON.stringify(bank)};\n`;
+  fs.writeFileSync(cfgDest, cfg, 'utf8');
+  // Note: serverless functions remain under /api at project root; Vercel will handle them separately.
+  console.log('[build] Static assets prepared in ./public');
+}
+
+main();

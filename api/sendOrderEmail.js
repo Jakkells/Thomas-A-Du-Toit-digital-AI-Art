@@ -1,152 +1,290 @@
-/**
- * Vercel serverless function to email order contents to the buyer.
- * POST /api/sendOrderEmail { orderId: number }
- *
- * Required env (set in Vercel Project Settings > Environment Variables):
- * - SUPABASE_URL
- * - SUPABASE_SERVICE_ROLE_KEY (preferred) or SUPABASE_KEY (anon, limited)
- * Optional email provider via Resend:
- * - RESEND_API_KEY
- * - RESEND_FROM (e.g., "Thomas AI Art <no-reply@yourdomain>")
- */
-module.exports = async function handler(req, res) {
+// Serverless function (Vercel) to send order delivery emails via Resend
+// Expects: POST { orderId: number }
+// Env vars required:
+// - SUPABASE_URL: Your Supabase project URL
+// - SUPABASE_SERVICE_ROLE_KEY (recommended) or SUPABASE_ANON_KEY: to read orders/order_items
+
+// Load .env locally for `vercel dev`
+try { require('dotenv').config(); } catch {}
+const { createClient } = require('@supabase/supabase-js');
+const nodemailer = require('nodemailer');
+
+function badRequest(res, msg) {
+  res.statusCode = 400;
+  res.setHeader('content-type', 'application/json');
+  res.end(JSON.stringify({ ok: false, error: msg || 'bad-request' }));
+}
+
+function serverError(res, msg, code = 500, details) {
+  res.statusCode = code;
+  res.setHeader('content-type', 'application/json');
+  const payload = { ok: false, error: msg || 'server-error' };
+  if (details) payload.details = details;
+  res.end(JSON.stringify(payload));
+}
+
+function ok(res, data) {
+  res.statusCode = 200;
+  res.setHeader('content-type', 'application/json');
+  res.end(JSON.stringify({ ok: true, ...data }));
+}
+
+// Build a simple HTML email body listing purchased items and links
+function renderEmail({ order, items }) {
+  const safe = (s) => String(s || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const listHtml = (items || []).map((it) => {
+    const urls = String(it.image_urls || '')
+      .split(',')
+      .map((u) => u.trim())
+      .filter(Boolean);
+    const thumb = urls[0] || '';
+    const links = urls
+      .map((u, i) => `<a href="${safe(u)}" target="_blank" rel="noreferrer">Download ${i + 1}</a>`) 
+      .join(' | ');
+    const thumbImg = thumb ? `<div style="margin-top:6px"><img src="${safe(thumb)}" alt="${safe(it.product_name)}" style="max-width:180px;border-radius:6px;border:1px solid #eee"/></div>` : '';
+    return `
+      <li style="margin:14px 0; padding:12px; border:1px solid #eee; border-radius:8px; list-style:none;">
+        <div style="font-weight:600">${safe(it.product_name || 'Artwork')}</div>
+        <div style="margin-top:4px">${links}</div>
+        ${thumbImg}
+      </li>
+    `;
+  }).join('');
+
+  const total = Number(order.total_price || 0).toFixed(2);
+  const ref = safe(order.eft_reference || order.id);
+
+  return `
+    <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji'; line-height:1.5; color:#222">
+      <h2 style="margin:0 0 12px">Thank you for your purchase!</h2>
+      <p style="margin:0 0 12px">Your payment has been confirmed. Here are your artworks and download links.</p>
+      <p style="margin:0 0 12px">
+        <strong>Reference:</strong> ${ref}<br/>
+        <strong>Total Paid:</strong> R ${total}
+      </p>
+      <ul style="padding:0; margin:16px 0 8px">${listHtml}</ul>
+      <p style="margin-top:18px; font-size:14px; color:#555">If any link doesn’t open, copy and paste it into your browser. If you need help, just reply to this email.</p>
+    </div>
+  `;
+}
+
+function renderTextEmail({ order, items }) {
+  const urlsFor = (it) => String(it.image_urls || '')
+    .split(',')
+    .map((u) => u.trim())
+    .filter(Boolean);
+  const total = Number(order.total_price || 0).toFixed(2);
+  const ref = String(order.eft_reference || order.id);
+  const parts = [];
+  parts.push('Thank you for your purchase!');
+  parts.push('Your payment has been confirmed. Here are your artworks and download links.');
+  parts.push('');
+  parts.push(`Reference: ${ref}`);
+  parts.push(`Total Paid: R ${total}`);
+  parts.push('');
+  (items || []).forEach((it, idx) => {
+    const urls = urlsFor(it);
+    parts.push(`${idx + 1}. ${it.product_name || 'Artwork'}`);
+    urls.forEach((u, i) => parts.push(`   - Download ${i + 1}: ${u}`));
+    parts.push('');
+  });
+  parts.push('If any link doesn’t open, copy and paste it into your browser.');
+  return parts.join('\n');
+}
+
+async function fetchBufferWithTimeout(url, ms = 10000) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms).unref?.();
   try {
-    // Basic CORS for cross-origin calls (e.g., local static UI -> Vercel API)
-    const allowOrigin = process.env.CORS_ALLOW_ORIGIN || '*';
-    res.setHeader('Access-Control-Allow-Origin', allowOrigin);
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'content-type, authorization');
-    if (req.method === 'OPTIONS') {
-      return res.status(204).end();
-    }
+    const resp = await fetch(url, { signal: ctl.signal });
+    if (!resp.ok) throw new Error('fetch-failed ' + resp.status);
+    const arr = await resp.arrayBuffer();
+    return Buffer.from(arr);
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+function filenameFromUrl(u, fallback) {
+  try {
+    const { pathname } = new URL(u);
+    const base = pathname.split('/').filter(Boolean).pop();
+    if (base) return base.split('?')[0];
+  } catch {}
+  return fallback || 'image.jpg';
+}
+
+module.exports = async (req, res) => {
+  try {
+    console.log('[sendOrderEmail] request start', { method: req.method, path: req.url });
     if (req.method !== 'POST') {
-      return res.status(405).json({ error: 'Method Not Allowed' });
+      res.setHeader('Allow', 'POST');
+      return serverError(res, 'method-not-allowed', 405);
     }
-    const { orderId } = req.body || {};
-    if (!orderId) return res.status(400).json({ error: 'orderId required' });
 
-    const SUPABASE_URL = process.env.SUPABASE_URL;
-    const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
+    // Parse body (Vercel provides already-parsed body for JSON requests, but handle string too)
+    let body = req.body;
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body); } catch {}
+    }
+  const orderId = Number(body?.orderId);
+  const preview = !!body?.preview || !!body?.nosend;
+    console.log('[sendOrderEmail] parsed body', { orderId, preview });
+    if (!orderId || Number.isNaN(orderId)) return badRequest(res, 'missing-orderId');
+
+    const SUPABASE_URL = process.env.SUPABASE_URL || '';
+    const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY || '';
     if (!SUPABASE_URL || !SUPABASE_KEY) {
-      return res.status(500).json({ error: 'Server not configured (SUPABASE_URL/KEY missing)' });
+      const missing = [];
+      if (!SUPABASE_URL) missing.push('SUPABASE_URL');
+      if (!SUPABASE_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY or SUPABASE_KEY');
+      console.error('[sendOrderEmail] env missing', missing);
+      return serverError(res, 'supabase-env-missing: ' + missing.join(', '));
     }
 
-    const headers = {
-      'apikey': SUPABASE_KEY,
-      'authorization': `Bearer ${SUPABASE_KEY}`,
-      'accept': 'application/json'
-    };
-
-    // Fetch order (includes user_email captured at confirm time)
-    const oRes = await fetch(`${SUPABASE_URL}/rest/v1/orders?id=eq.${encodeURIComponent(orderId)}&select=id,eft_reference,total_price,user_id,user_email`, { headers });
-    if (!oRes.ok) return res.status(oRes.status).json({ error: 'Failed to fetch order' });
-    const orders = await oRes.json();
-    const order = Array.isArray(orders) ? orders[0] : null;
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-
-    // Fetch order items snapshot
-    const iRes = await fetch(`${SUPABASE_URL}/rest/v1/order_items?order_id=eq.${encodeURIComponent(orderId)}&select=product_name,image_urls`, { headers });
-    if (!iRes.ok) return res.status(iRes.status).json({ error: 'Failed to fetch items' });
-    const items = await iRes.json();
-
-  // Allow a test override to force all emails to a fixed address during testing
-  const OVERRIDE_TO = (process.env.EMAIL_TO_OVERRIDE || process.env.RESEND_TO_OVERRIDE || '').trim();
-  const to = String(OVERRIDE_TO || order.user_email || '').trim();
-    if (!to) {
-      // No email available on order; do not fail the entire admin action
-      return res.status(200).json({ ok: true, emailed: false, reason: 'missing_user_email' });
-    }
-
-    // Build email content
-    const lines = [];
-    lines.push('Thanks for your purchase! Here are your images:');
-    lines.push('');
-    (items || []).forEach((it, idx) => {
-      const imgs = String(it.image_urls || '').split(',').map(s => s.trim()).filter(Boolean);
-      lines.push(`${idx + 1}. ${it.product_name}`);
-      imgs.forEach(u => lines.push(`   - ${u}`));
-    });
-    lines.push('');
-    if (order.eft_reference) lines.push(`Reference: ${order.eft_reference}`);
-    const textBody = lines.join('\n');
-
-    // Try Resend if configured
-    const RESEND_API_KEY = process.env.RESEND_API_KEY;
-    const RESEND_FROM = process.env.RESEND_FROM || 'no-reply@example.com';
-    if (RESEND_API_KEY) {
-      const htmlItems = (items || []).map((it) => {
-        const imgs = String(it.image_urls || '').split(',').map(s => s.trim()).filter(Boolean);
-        const imgLinks = imgs.map(u => `<li><a href="${u}">${u}</a></li>`).join('');
-        return `<li><strong>${it.product_name}</strong><ul>${imgLinks}</ul></li>`;
-      }).join('');
-      const html = `
-        <div>
-          <p>Thanks for your purchase! Here are your images:</p>
-          <ol>${htmlItems}</ol>
-          ${order.eft_reference ? `<p>Reference: ${order.eft_reference}</p>` : ''}
-        </div>`;
-
-      const r = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'authorization': `Bearer ${RESEND_API_KEY}`,
-          'content-type': 'application/json'
-        },
-        body: JSON.stringify({
-          from: RESEND_FROM,
-          to: [to],
-          subject: `${OVERRIDE_TO ? '[TEST OVERRIDE] ' : ''}Your digital purchase from Thomas AI Art`,
-          text: textBody + (OVERRIDE_TO ? `\n\n[Test override active; original: ${order.user_email || 'unknown'}]` : ''),
-          html: html + (OVERRIDE_TO ? `<p style="color:#888;font-size:12px;">[Test override active; original: ${order.user_email || 'unknown'}]</p>` : '')
-        })
+    // Init clients
+    const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+    // Optional user client to satisfy RLS if we lack service role
+    const authHeader = req.headers?.authorization || req.headers?.Authorization;
+    const token = (authHeader || '').startsWith('Bearer ') ? authHeader.slice(7) : '';
+    let userClient = null;
+    if (token && process.env.SUPABASE_ANON_KEY) {
+      userClient = createClient(SUPABASE_URL, process.env.SUPABASE_ANON_KEY, {
+        global: { headers: { Authorization: `Bearer ${token}` } },
+        auth: { persistSession: false, autoRefreshToken: false }
       });
-      if (!r.ok) {
-        const txt = await r.text().catch(() => '');
-        return res.status(502).json({ error: 'Email send failed', detail: txt });
-      }
-      return res.status(200).json({ ok: true, emailed: true, provider: 'resend' });
     }
 
-    // SMTP fallback using Nodemailer (e.g., Gmail via App Password)
+    // If no service role, verify admin via user token and use userClient for data reads
+    let dataClient = sb;
+    const hasServiceRole = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!hasServiceRole) {
+      if (!userClient) return serverError(res, 'unauthorized-no-token', 401);
+      try {
+        const { data: ures, error: uerr } = await userClient.auth.getUser();
+        if (uerr || !ures?.user?.id) return serverError(res, 'unauthorized-getuser-failed', 401, uerr?.message || uerr);
+        const uid = ures.user.id;
+        const { data: prof, error: perr } = await userClient
+          .from('profiles')
+          .select('role')
+          .eq('id', uid)
+          .maybeSingle();
+        if (perr) return serverError(res, 'unauthorized-profile-read-failed', 401, perr?.message || perr);
+        const role = String(prof?.role || '').toLowerCase();
+        if (role !== 'admin') return serverError(res, 'forbidden-not-admin', 403);
+        dataClient = userClient; // use RLS-authorized client for reads
+        console.log('[sendOrderEmail] using user client under RLS');
+      } catch (e) {
+        return serverError(res, 'unauthorized-exception', 401, e?.message || e);
+      }
+    }
+
+    // Load order
+    const { data: order, error: orderErr } = await dataClient
+      .from('orders')
+      .select('id, user_email, user_id, eft_reference, total_price, status, created_at')
+      .eq('id', orderId)
+      .maybeSingle();
+  if (orderErr) return serverError(res, 'order-load-failed', 500, orderErr?.message || orderErr);
+    if (!order) return serverError(res, 'order-not-found', 404);
+
+    if (!order.user_email) return serverError(res, 'recipient-missing', 422);
+
+    // Load items
+    const { data: items, error: itemsErr } = await dataClient
+      .from('order_items')
+      .select('product_id, product_name, image_urls')
+      .eq('order_id', orderId);
+  if (itemsErr) return serverError(res, 'order-items-load-failed', 500, itemsErr?.message || itemsErr);
+
+    // Compose email content
+  const subject = `Your Thomas AI Art order ${order.eft_reference || '#' + order.id}`;
+  const emailItems = items || [];
+  console.log('[sendOrderEmail] order loaded', { orderId: order.id, email: order.user_email, items: emailItems.length });
+  const html = renderEmail({ order, items: emailItems });
+  const text = renderTextEmail({ order, items: emailItems });
+
+    // Optional server-side cart cleanup using service role (avoids client needing UPDATE/DELETE grants)
+    if (hasServiceRole) {
+      try {
+        if (order.user_id) {
+          const { data: carts } = await sb
+            .from('carts')
+            .select('id')
+            .eq('user_id', order.user_id)
+            .eq('status', 'active');
+          const ids = (carts || []).map(c => c.id);
+          if (ids.length) {
+            await sb.from('cart_items').delete().in('cart_id', ids);
+            await sb.from('carts').update({ status: 'checked_out' }).in('id', ids);
+          }
+        }
+      } catch (cleanupErr) {
+        console.warn('[sendOrderEmail] cleanup failed', cleanupErr?.message || cleanupErr);
+      }
+    } else {
+      console.log('[sendOrderEmail] skipping cart cleanup (no service role key)');
+    }
+
+    // If preview requested, do not send; return content for client-side draft
+    if (preview) {
+      return ok(res, { id: order.id, to: order.user_email, subject, text });
+    }
+
+    // Send via SMTP (Nodemailer)
     try {
-      const nodemailer = require('nodemailer');
-      // Support generic SMTP or Gmail via app passwords
-      const SMTP_HOST = process.env.SMTP_HOST || (process.env.GMAIL_USER ? 'smtp.gmail.com' : '');
-      const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
-      const SMTP_SECURE = String(process.env.SMTP_SECURE || 'true').toLowerCase() !== 'false';
-      const SMTP_USER = process.env.SMTP_USER || process.env.GMAIL_USER || '';
-      const SMTP_PASS = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || '';
-      const FROM = process.env.SMTP_FROM || RESEND_FROM;
-
-      if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
-        // No SMTP configured either
-        return res.status(200).json({ ok: true, emailed: false, reason: 'no_email_provider', overrideTo: OVERRIDE_TO || null });
+      // Build attachments from first N unique image URLs across items
+      const ATTACH_LIMIT = Number(process.env.EMAIL_ATTACH_LIMIT || 8);
+      const FETCH_TIMEOUT = Number(process.env.EMAIL_FETCH_TIMEOUT_MS || 10000);
+      const allUrls = [];
+      for (const it of emailItems) {
+        const urls = String(it.image_urls || '')
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean);
+        for (const u of urls) allUrls.push(u);
       }
+      const uniqUrls = [...new Set(allUrls)].slice(0, Math.max(0, ATTACH_LIMIT));
+      const attachments = [];
+      for (let i = 0; i < uniqUrls.length; i++) {
+        const u = uniqUrls[i];
+        try {
+          const content = await fetchBufferWithTimeout(u, FETCH_TIMEOUT);
+          const filename = filenameFromUrl(u, `artwork-${i + 1}.jpg`);
+          attachments.push({ filename, content });
+        } catch (e) {
+          console.warn('[sendOrderEmail] attachment fetch failed', u, e?.message || e);
+          // Skip failed download; links remain in body
+        }
+      }
+      console.log('[sendOrderEmail] prepared attachments', { requested: uniqUrls.length, attached: attachments.length });
 
-      const transporter = nodemailer.createTransport({
-        host: SMTP_HOST,
-        port: SMTP_PORT,
-        secure: SMTP_SECURE,
-        auth: { user: SMTP_USER, pass: SMTP_PASS }
-      });
+      const host = process.env.SMTP_HOST || 'smtp.gmail.com';
+      const port = Number(process.env.SMTP_PORT || 465);
+      const secure = String(process.env.SMTP_SECURE || 'true') === 'true';
+      const user = process.env.SMTP_USER;
+      const pass = process.env.SMTP_PASS;
+      if (!user || !pass) return serverError(res, 'smtp-env-missing');
 
+      const transporter = nodemailer.createTransport({ host, port, secure, auth: { user, pass } });
+      try { await transporter.verify(); console.log('[sendOrderEmail] SMTP verify: OK'); } catch (e) { console.error('[sendOrderEmail] SMTP verify failed', e?.message || e); }
+      const fromName = process.env.EMAIL_FROM_NAME || 'Thomas AI Art';
+      const from = `${fromName} <${user}>`;
       const info = await transporter.sendMail({
-        from: FROM,
-        to,
-        subject: `${OVERRIDE_TO ? '[TEST OVERRIDE] ' : ''}Your digital purchase from Thomas AI Art`,
-        text: textBody + (OVERRIDE_TO ? `\n\n[Test override active; original: ${order.user_email || 'unknown'}]` : ''),
-        html: `
-          <div>
-            <p>Thanks for your purchase! Here are your images:</p>
-            <pre style="white-space:pre-wrap;">${textBody.replace(/</g,'&lt;')}</pre>
-            ${OVERRIDE_TO ? `<p style="color:#888;font-size:12px;">[Test override active; original: ${order.user_email || 'unknown'}]</p>` : ''}
-          </div>`
+        from,
+        to: order.user_email,
+        subject,
+        text,
+        html,
+        attachments,
       });
-      return res.status(200).json({ ok: true, emailed: true, provider: 'smtp', messageId: info.messageId });
-    } catch (smtpErr) {
-      return res.status(502).json({ error: 'Email send failed (SMTP)', detail: smtpErr?.message || String(smtpErr) });
+      console.log('[sendOrderEmail] sent', { messageId: info?.messageId, to: order.user_email });
+      return ok(res, { id: order.id, messageId: info?.messageId || null, attached: attachments.length });
+    } catch (e) {
+      console.error('[sendOrderEmail] smtp-send-failed', e?.message || e);
+      return serverError(res, 'smtp-send-failed', 500, e?.message || e);
     }
   } catch (e) {
-    return res.status(500).json({ error: e?.message || 'Server error' });
+    return serverError(res, 'unexpected-error');
   }
 };
